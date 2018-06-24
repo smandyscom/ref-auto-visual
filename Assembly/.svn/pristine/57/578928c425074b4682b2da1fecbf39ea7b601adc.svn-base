@@ -1,0 +1,43 @@
+[Config]
+EstCommunication    = Yes
+Control             = Yes
+DynamicEvRepCfg     = Yes
+VarDataCollect      = Yes
+TraceDataCollect    = Yes
+StatusDataCollect   = Yes
+Alarm               = Yes
+EqpConstants        = Yes
+ProcessProgram      = Yes
+EqpTerminal         = Yes
+Clock               = Yes
+LimitsMonitoring    = (NotReady)
+Spooling	    = Yes
+Event               = Yes (Always)
+VID_Sorting         = Yes
+VValueFillSpaceChar = No
+
+[ProcessProgram]
+PPFilePath        = $AppPath\\ProcessJob
+//PPFilePath        = D:\\DeskNote_Data\\GEM\\QuickGEMTest\\ProcessJob
+PPExtName         = .pjb
+PPIDWithExtName   = No
+PPBODYFormat      = ASCII_TYPE
+//PPBODYFormat      = BINARY_TYPE
+PPFormat          = BOTH_FORMAT
+//PPFormat          = UNFORMATTED_ONLY
+//PPFormat          = FORMATTED_ONLY
+PParmRangeCheck   = Yes
+PPIDLimitUseNumeric = No
+//PPIDLimitUseNumeric = 20
+PPOverwriteEnable = No
+PPDeleteDisable   = No
+
+[Alarm]
+//ALID_Format        = UINT_2_TYPE
+ALID_Format        = UINT_4_TYPE
+
+[DynaEvRepCfg]
+AutoLoadDefaultReport = No
+
+[Communication]
+SendS1F13Disable = No

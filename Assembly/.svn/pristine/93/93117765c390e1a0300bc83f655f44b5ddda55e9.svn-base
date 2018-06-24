@@ -1,0 +1,379 @@
+﻿Imports System.Drawing
+
+Public Class UserControl_IntensityMap
+    Private _leftSpace As Integer = 40
+    Property leftSpqce As Integer
+        Get
+            Return _leftSpace
+        End Get
+        Set(value As Integer)
+            _leftSpace = value
+            '_gridsPanel.leftSpace = value
+        End Set
+    End Property
+
+    Private _upSpace As Integer = 10
+    Property upSpace As Integer
+        Get
+            Return _upSpace
+        End Get
+        Set(value As Integer)
+            _upSpace = value
+            '_gridsPanel.upSpace = value
+        End Set
+    End Property
+
+    Private _downSpace As Integer = 30
+    Property downSpace As Integer
+        Get
+            Return _downSpace
+        End Get
+        Set(value As Integer)
+            _downSpace = value
+            '_gridsPanel.downSpace = value
+        End Set
+    End Property
+
+    Private _rightSpace As Integer = 10
+    Property rightSpace As Integer
+        Get
+            Return _rightSpace
+        End Get
+        Set(value As Integer)
+            _rightSpace = value
+            _gridsPanel.rightSpace = value
+        End Set
+    End Property
+
+    Private _data As Double(,)
+    WriteOnly Property dataArray As Double(,)
+        'Get
+        '    Return _data
+        'End Get
+        Set(value As Double(,))
+            _data = value
+            If _data IsNot Nothing Then
+                Try
+                    _gridsPanel.data = value
+                    'clearGrid()
+                    'CreateHeatMap(_data, (Panel1.Width - leftSpqce) / (_data.GetUpperBound(0) + 1), (Panel1.Height - downSpace - 10) / (_data.GetUpperBound(1) + 1), 0, 1)
+                Catch ex As Exception
+                    MessageBox.Show(ex.Message)
+                End Try
+            End If
+        End Set
+    End Property
+
+    Private _StartPositionX As Double = 0.0
+    Public Property StartPositionX As Double
+        Get
+            Return _StartPositionX
+        End Get
+        Set(value As Double)
+            _StartPositionX = value
+            If _gridsPanel IsNot Nothing Then
+                _gridsPanel.StartX = value
+                _gridsPanel.Refresh()
+            End If
+        End Set
+    End Property
+
+    Private _EndPositionX As Double = 10.0
+    Public Property EndPositionX As Double
+        Get
+            Return _EndPositionX
+        End Get
+        Set(value As Double)
+            _EndPositionX = value
+            If _gridsPanel IsNot Nothing Then
+                _gridsPanel.EndX = value
+                _gridsPanel.Refresh()
+            End If
+        End Set
+    End Property
+
+    Private _StartPositionY As Double = 0.0
+    Public Property StartPositionY As Double
+        Get
+            Return _StartPositionY
+        End Get
+        Set(value As Double)
+            _StartPositionY = value
+            If _gridsPanel IsNot Nothing Then
+                _gridsPanel.StartY = value
+                _gridsPanel.Refresh()
+            End If
+        End Set
+    End Property
+
+    Private _EndPositionY As Double = 10.0
+    Public Property EndPositionY As Double
+        Get
+            Return _EndPositionY
+        End Get
+        Set(value As Double)
+            _EndPositionY = value
+            If _gridsPanel IsNot Nothing Then
+                _gridsPanel.EndY = value
+                _gridsPanel.Refresh()
+            End If
+        End Set
+    End Property
+
+    Private _gridsPanel As GridPanel = New GridPanel(Me.Width, Me.Height)
+    Private _colorbar As ColorBar = New ColorBar(50, Me.Height - 60)
+
+    Private Sub UserControl_IntensityMap_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        _colorbar = New ColorBar(50, Me.Height - 60)
+        _colorbar.Location = New Point(30, 10)
+        Panel2.Controls.Add(_colorbar)
+
+        _gridsPanel = New GridPanel(Panel1.Width, Panel1.Height)        
+        _gridsPanel.downSpace = _downSpace
+        _gridsPanel.upSpace = _upSpace
+        _gridsPanel.leftSpace = _leftSpace
+        dataArray = {{0, 0}, {0, 0}}
+
+        Panel1.Controls.Add(_gridsPanel)
+        _gridsPanel.Dock = DockStyle.Fill
+
+    End Sub
+End Class
+
+Public Class IntensityGrid
+    Inherits Panel
+
+    Public maxValue As Double = 1.0
+
+    Private _IntensityValue As Double
+    Property IntensityValue As Double
+        Get
+            Return _IntensityValue
+        End Get
+        Set(value As Double)
+            _IntensityValue = value
+            MyBase.BackColor = SetColor(_IntensityValue, maxValue, 220)
+        End Set
+    End Property
+
+    Private labelValue As Label = New Label
+
+    Public Sub New(width As Integer, height As Integer)
+        MyBase.New()
+        MyBase.Width = width
+        MyBase.Height = height
+
+        labelValue.Width = width
+        labelValue.Height = height
+        labelValue.Text = "0"
+        labelValue.TextAlign = ContentAlignment.MiddleCenter
+        labelValue.Visible = False
+        MyBase.Controls.Add(labelValue)
+    End Sub
+
+    Private Sub Grid_MouseDown(sender As Object, e As EventArgs) Handles MyBase.MouseDown
+        'labelValue.Text = _IntensityValue.ToString()
+        labelValue.Text = String.Format("{0:F3}", _IntensityValue)
+        labelValue.Visible = True
+    End Sub
+
+    Private Sub Grid_MouseUp(sender As Object, e As EventArgs) Handles MyBase.MouseUp
+        labelValue.Visible = False
+    End Sub
+
+    Private Function SetColor(value As Double, max As Double, gray As Integer) As Color
+        Dim pct As Double = value / max
+        If pct > 1 Then
+            pct = 1
+        End If
+        Dim _color As New Color
+
+        If (pct >= 0) And (pct < 0.25) Then
+            _color = Color.FromArgb(0, pct * gray * 4, gray)
+        ElseIf (pct >= 0.25) And (pct < 0.5) Then
+            _color = Color.FromArgb(0, gray, gray - (pct - 0.25) * gray * 4)
+        ElseIf (pct >= 0.5) And (pct < 0.75) Then
+            _color = Color.FromArgb((pct - 0.5) * gray * 4, gray, 0)
+        Else
+            _color = Color.FromArgb(gray, gray - (pct - 0.75) * gray * 4, 0)
+        End If
+
+        Return _color
+    End Function
+End Class
+
+Public Class ColorBar
+    Inherits Panel
+
+    Public strMax As String = "1.00"
+    Public strMin As String = "0.00"
+    Public strMid As String = "0.50"
+
+    Private barWidth As Integer
+    Private barHeight As Integer
+
+    Public Sub New(width As Integer, height As Integer)
+        MyBase.New()
+        Me.Width = width
+        Me.Height = height
+
+        barWidth = width - 30
+        If barWidth <= 0 Then
+            barWidth = 1
+        End If
+        barHeight = height
+
+
+    End Sub
+
+    Protected Overrides Sub OnPaintBackground(ByVal e As PaintEventArgs)
+        MyBase.OnPaint(e)
+
+        Dim brush As System.Drawing.SolidBrush = New SolidBrush(SystemColors.Control)
+        e.Graphics.FillRectangle(brush, New Rectangle(0, 0, Me.Width, Me.Height))
+
+        Dim _color As New Color
+        Dim _brush1 As System.Drawing.Drawing2D.LinearGradientBrush = New Drawing2D.LinearGradientBrush(New Rectangle(0, 0, barWidth, Me.Height / 4), Color.FromArgb(220, 0, 0), Color.FromArgb(220, 220, 0), 90)
+        Dim _brush2 As System.Drawing.Drawing2D.LinearGradientBrush = New Drawing2D.LinearGradientBrush(New Rectangle(0, Me.Height / 4 - 1, barWidth, Me.Height / 4), Color.FromArgb(220, 220, 0), Color.FromArgb(0, 220, 0), 90)
+        Dim _brush3 As System.Drawing.Drawing2D.LinearGradientBrush = New Drawing2D.LinearGradientBrush(New Rectangle(0, Me.Height / 2 - 1, barWidth, Me.Height / 4), Color.FromArgb(0, 220, 0), Color.FromArgb(0, 220, 220), 90)
+        Dim _brush4 As System.Drawing.Drawing2D.LinearGradientBrush = New Drawing2D.LinearGradientBrush(New Rectangle(0, 3 * Me.Height / 4 - 1, barWidth, Me.Height / 4), Color.FromArgb(0, 220, 220), Color.FromArgb(0, 0, 220), 90)
+
+        e.Graphics.FillRectangle(_brush1, New Rectangle(0, 0, barWidth, Me.Height / 4))
+        e.Graphics.FillRectangle(_brush2, New Rectangle(0, Me.Height / 4, barWidth, Me.Height / 4))
+        e.Graphics.FillRectangle(_brush3, New Rectangle(0, Me.Height / 2, barWidth, Me.Height / 4))
+        e.Graphics.FillRectangle(_brush4, New Rectangle(0, 3 * Me.Height / 4, barWidth, Me.Height / 4))
+
+
+        brush.Dispose()
+        _brush1.Dispose()
+        _brush2.Dispose()
+        _brush3.Dispose()
+        _brush4.Dispose()
+
+        e.Graphics.DrawString(strMax, Me.Font, Brushes.Black, barWidth + 2, 0)
+        e.Graphics.DrawString(strMin, Me.Font, Brushes.Black, barWidth + 2, barHeight - 10)
+        e.Graphics.DrawString(strMid, Me.Font, Brushes.Black, barWidth + 2, barHeight / 2 - 5)
+
+    End Sub
+
+
+End Class
+
+Public Class GridPanel
+    Inherits Panel
+
+    Public leftSpace As Integer = 40
+    Public rightSpace As Integer = 10
+    Public upSpace As Integer = 10
+    Public downSpace As Integer = 30
+    Public StartX As Double = 0.0
+    Public EndX As Double = 10.0
+    Public StartY As Double = 0.0
+    Public EndY As Double = 10.0
+
+    Private _width As Integer
+    Private _height As Integer
+
+    Private _labelXSpace As Integer = 20
+    Private _labelYSpace As Integer = 40
+
+    Private labelX As Label = New Label()
+    Private labelY As Label = New Label()
+
+    Private _data As Double(,)
+    WriteOnly Property data As Double(,)        
+        Set(value As Double(,))
+            _data = value
+            If _data IsNot Nothing Then
+                Try
+                    ClearGrid()
+                    CreateHeatMap(_data, Math.Floor((_width - leftSpace - rightSpace - _labelYSpace) / (_data.GetUpperBound(0) + 1)), Math.Floor((_height - downSpace - upSpace - _labelXSpace) / (_data.GetUpperBound(1) + 1)), 0, 1)
+                Catch ex As Exception
+                    MessageBox.Show(ex.Message)
+                End Try
+            End If
+        End Set
+    End Property
+    Private _grid As IntensityGrid(,)
+
+    Public Sub New(width As Integer, height As Integer)
+        MyBase.New()
+        _width = width
+        _height = height
+
+        labelX.Text = "X (um)"
+        labelY.Text = "Y (um)"
+        labelX.Width = 40
+        labelY.Width = 40
+
+        labelY.Location = New Point(2, height / 2)
+        labelX.Location = New Point(width / 2, height - _labelXSpace)
+
+        Me.Controls.Add(labelX)
+        Me.Controls.Add(labelY)
+    End Sub
+
+    Private Sub ClearGrid()
+        If _grid IsNot Nothing Then
+            For i = 0 To _grid.GetUpperBound(0)
+                For j = 0 To _grid.GetUpperBound(1)
+                    If Me.Contains(_grid(i, j)) Then
+                        Me.Controls.Remove(_grid(i, j))
+                    End If
+                    If _grid(i, j) IsNot Nothing Then
+                        _grid(i, j).Dispose()
+                    End If
+                Next
+            Next
+        End If
+    End Sub
+
+    Private Sub CreateHeatMap(data As Double(,), gridWidth As Integer, gridHeight As Integer, gridGap As Integer, maxValue As Double)
+        Dim grid(data.GetUpperBound(0), data.GetUpperBound(1)) As IntensityGrid
+        _grid = grid
+        For i = 0 To _grid.GetUpperBound(0)
+            For j = 0 To _grid.GetUpperBound(1)
+                _grid(i, j) = New IntensityGrid(gridWidth, gridHeight)
+                _grid(i, j).Location = New Point(leftSpace + _labelYSpace + (gridWidth + gridGap) * i, upSpace + (gridHeight + gridGap) * j)
+                _grid(i, j).IntensityValue = data(i, j)
+
+                Controls.Add(_grid(i, j))
+            Next
+        Next
+        _width = gridWidth * (_data.GetUpperBound(0) + 1) + leftSpace + rightSpace + _labelYSpace
+        _height = gridHeight * (_data.GetUpperBound(1) + 1) + downSpace + upSpace + _labelXSpace
+    End Sub
+
+    Protected Overrides Sub OnPaintBackground(ByVal e As PaintEventArgs)
+        'MyBase.OnPaint(e)
+        Dim brush As System.Drawing.SolidBrush = New SolidBrush(SystemColors.Control)
+        e.Graphics.FillRectangle(brush, New Rectangle(0, 0, Me.Width, Me.Height))
+
+        Dim pen1 As New Pen(Color.Black, 1.5)
+
+        Dim line_left As Integer = leftSpace + _labelYSpace
+        Dim line_up As Integer = upSpace
+        Dim line_down As Integer = _height - downSpace - _labelXSpace
+        Dim line_right As Integer = _width - rightSpace
+        Dim gridplot_width As Integer = _width - leftSpace - rightSpace - _labelYSpace
+        Dim gridplot_height As Integer = _height - upSpace - downSpace - _labelXSpace
+
+        Dim font As Font = Me.Font
+        'font.
+        Dim format As StringFormat = New StringFormat
+        format.Alignment = StringAlignment.Center
+        format.LineAlignment = StringAlignment.Center
+
+        e.Graphics.DrawLine(pen1, line_left - 1, line_up, line_left - 1, line_down)
+        e.Graphics.DrawLine(pen1, line_left, line_down, line_right, line_down)
+
+        e.Graphics.DrawString(EndY.ToString, Me.Font, Brushes.Black, line_left - 30, line_up + 5, format)
+        e.Graphics.DrawString(((StartY + EndY) / 2).ToString, Me.Font, Brushes.Black, line_left - 30, line_up + gridplot_height / 2, format)
+        e.Graphics.DrawString(StartY.ToString, Me.Font, Brushes.Black, line_left - 30, line_up + gridplot_height - 5, format)
+
+        e.Graphics.DrawString(StartX.ToString, Me.Font, Brushes.Black, line_left, line_down + 15, format)
+        e.Graphics.DrawString(((StartX + EndX) / 2).ToString, Me.Font, Brushes.Black, line_left + gridplot_width / 2 - 10, line_down + 15, format)
+        e.Graphics.DrawString(EndX.ToString, Me.Font, Brushes.Black, line_left + gridplot_width - 10, line_down + 15, format)
+
+    End Sub
+End Class

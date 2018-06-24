@@ -1,0 +1,224 @@
+﻿Imports AutoNumeric
+Imports Automation
+Imports MathNet.Numerics.LinearAlgebra
+Imports Automation.Components.Services
+
+
+''' <summary>
+''' Offered the 
+''' </summary>
+''' <remarks></remarks>
+Public MustInherit Class cameraCalibrationBase
+    Inherits measureProcedureType1Base
+
+    ReadOnly Property IdealX As Double
+        Get
+            If idealPosition.Current IsNot Nothing Then
+                Return idealPosition.Current.X
+            Else
+                Return 0
+            End If
+        End Get
+    End Property
+    ReadOnly Property IdealY As Double
+        Get
+            If idealPosition.Current IsNot Nothing Then
+                Return idealPosition.Current.Y
+            Else
+                Return 0
+            End If
+        End Get
+    End Property
+    ReadOnly Property IdealZ As Double
+        Get
+            If idealPosition.Current IsNot Nothing Then
+                Return idealPosition.Current.Z
+            Else
+                Return 0
+            End If
+        End Get
+    End Property
+
+    Protected idealPosition As List(Of PositionVector).Enumerator = Nothing
+
+    Public Overrides Property Arguments As Object
+        Get
+            Return CurrentTarget
+        End Get
+        Set(value As Object)
+            CurrentTarget = value
+        End Set
+    End Property
+
+    Property CurrentTarget As cameraCalibrationSettingBase
+        Get
+            Return MeasureSettingDerived
+        End Get
+        Set(value As cameraCalibrationSettingBase)
+            MeasureSettingDerived = value
+            'link
+            MyBase.correspondingErrorMatrix = frames.Instance.Elementray(MeasureSettingDerived.RealReference,
+                                                                         MeasureSettingDerived.NominalReference)
+            MyBase.errorMatrix = New eulerHtmTR(MeasureSettingDerived.RealReference,
+                                                MeasureSettingDerived.RealReference)
+        End Set
+    End Property
+    ReadOnly Property CurrentImageProcess As imageProcessSettingBlock
+        Get
+            Return MeasureSettingDerived.ImageProcessSetting
+        End Get
+    End Property
+    ''' <summary>
+    ''' Metamorphism of setting base
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overridable Property MeasureSettingDerived As cameraCalibrationSettingBase
+        Get
+            Return CType(__measureSetting, cameraCalibrationSettingBase)
+        End Get
+        Set(value As cameraCalibrationSettingBase)
+            __measureSetting = value
+        End Set
+    End Property
+
+    Dim delayTimer As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 0, 0, 100)}
+    ''' <summary>
+    ''' The detailed moving procedure
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Friend MustOverride Sub moveAction()
+    ''' <summary>
+    ''' Z value is simulated by previous pitch/roll
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Friend Overridable Function postHandlingAction(idealPosition As PositionVector, measuredPosition As PositionVector) As measuredDataPair
+        ''the guessed Z
+        'measuredPosition.Z = (correspondingErrorMatrix * measuredPosition).Z + idealPosition.Z
+
+        Return New measuredDataPair(idealPosition.RawValue,
+                                    measuredPosition.RawValue,
+                                    AutoNumeric.utilities.selectionEnums.X Or
+                                    AutoNumeric.utilities.selectionEnums.Y)
+    End Function
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overrides Function measureProcedure(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                idealPosition = MeasureSettingDerived.MeasurePoints.GetEnumerator
+                idealPosition.MoveNext() ' take first point
+                state = 10
+            Case 10
+                'moving method
+                moveAction()
+                state = 20
+            Case 20
+                If Assembly.Instance.IsAllAxesSettled Then
+                    delayTimer.IsEnabled = True
+                    state = 30
+                Else
+                    '--------------
+                    'axes action
+                    '--------------
+                End If
+            Case 30
+                If delayTimer.IsTimerTicked Then
+                    '------------------
+                    'Trigger the camera
+                    '------------------
+                    CurrentImageProcess.onCameraTriggered()
+                    state = 100
+                Else
+                    '------------
+                    '   Counting
+                    '------------
+                End If
+            Case 100
+                '-------------------
+                '   Camera done
+                '-------------------
+                If CurrentImageProcess.IsImageProcessDone Then
+
+                    If CurrentImageProcess.Result = Cognex.VisionPro.CogToolResultConstants.Accept Then
+                        '----------------------
+                        '   Wait some call back
+                        '----------------------
+                        'camera task done
+                        'pick the X,Y values only
+                        dataPairCollection.Add(postHandlingAction(idealPosition.Current,
+                                                                 New PositionVector(CurrentImageProcess.Coordinates.First,
+                                                                                    CurrentTarget.RealReference)))
+                    Else
+
+                        '----------------
+                        '   Skip this measure
+                        '----------------
+                        sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Image Process Failed At:{0}",
+                                                                               idealPosition.Current.RawValue.ToVectorString.Replace(vbCrLf, vbTab)))
+
+                    End If
+
+                    state = 500
+
+                Else
+                    '-----------------
+                    '   Camera working
+                    '-----------------
+                End If
+
+            Case 500
+                If idealPosition.MoveNext() Then
+                    '-------------------------
+                    '   Measure next one point
+                    '-------------------------
+                    state = 10 'rewind
+                Else
+                    '----------------
+                    '   All measure points had been done
+                    '----------------
+                    Return True
+                End If
+
+        End Select
+
+        Return False
+
+    End Function
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overrides Function preparationProcedure(ByRef state As Integer) As Boolean
+        Return False
+    End Function
+    ''' <summary>
+    ''' Raise smarpod
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overrides Function abortProcedure(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                sHtm.Instance.ControlVector = sHtm.Instance.SafePose.Clone
+                state = 10
+            Case 10
+                Return Assembly.Instance.CommandEndStatus(controlUnitsEnum.S) =
+                    IDrivable.endStatus.EXECUTION_END
+        End Select
+
+        Return False
+
+    End Function
+
+End Class

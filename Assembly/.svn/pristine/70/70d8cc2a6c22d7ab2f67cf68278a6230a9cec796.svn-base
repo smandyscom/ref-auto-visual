@@ -1,0 +1,164 @@
+﻿Imports Automation
+Imports MathNet.Numerics.LinearAlgebra
+Imports AutoNumeric
+
+
+''' <summary>
+''' 1. move X-stage to ready position (DIE_REAL)
+''' 2. let LPC_REAL align to DIE_REAL_DRY at certain height
+''' 3. xy-stage searching?
+''' </summary>
+''' <remarks></remarks>
+Public Class alignment
+    Inherits systemControlPrototype
+
+    ''' <summary>
+    ''' In mm
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property BondingHeight1 As Double = 1
+    Property BondingHeight2 As Double = 0.015
+
+    ''' <summary>
+    ''' From LPC_REAL to DIE_REAL
+    ''' </summary>
+    ''' <remarks></remarks>
+    Friend dryAlignStartTransformation As htmEdgeElementary = Nothing
+    Friend recordedDatasLeftX As List(Of dataSet) = New List(Of dataSet)
+    Friend recordedDatasLeftY As List(Of dataSet) = New List(Of dataSet)
+
+    Friend recordedDatasRightX As List(Of dataSet) = New List(Of dataSet)
+    Friend recordedDatasRightY As List(Of dataSet) = New List(Of dataSet)
+
+    ''' <summary>
+    ''' In mm
+    ''' </summary>
+    ''' <remarks></remarks>
+    Friend searchingRangeX As Double = 0.01
+    Friend searchingRangeY As Double = 0.01
+    Friend searchingStepX As Double = 0.0005
+    Friend searchingStepY As Double = 0.0005
+    Function searchingGrid() As List(Of Vector(Of Double))
+        Dim leftUpCorner As Vector(Of Double) = CreateVector.Dense(Of Double)({-searchingRangeX / 2,
+                                                                               -searchingRangeY / 2,
+                                                                               0,
+                                                                               1})
+
+        Dim output As List(Of Vector(Of Double)) = New List(Of Vector(Of Double))
+        Dim xAccumulation As Double = 0
+        Dim yAccumulation As Double = 0
+
+        While yAccumulation <= searchingRangeY
+            While xAccumulation <= searchingRangeX
+                output.Add(leftUpCorner + CreateVector.Dense(Of Double)({xAccumulation,
+                                                                       yAccumulation,
+                                                                       0,
+                                                                       1}))
+                xAccumulation += searchingStepX
+            End While
+            xAccumulation = 0 'reset
+            yAccumulation += searchingStepY
+        End While
+
+        Return output
+    End Function
+    Dim it As List(Of Vector(Of Double)).Enumerator = Nothing
+
+    Function stateExecute() As Integer
+
+        Select Case systemSubState
+            Case 1
+                With frames.Instance
+                    .solveAbsAxAy(frames.Instance.Elementray(framesDefinition.DIE_REAL, framesDefinition.R).Origin,
+                                  framesDefinition.S0)
+                End With
+            Case 2
+                If Assembly.Instance.IsAllAxesSettled Then
+
+                    Dim currentTransformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                               framesDefinition.DIE_REAL)
+
+                    'let all axis perfectly aligned
+                    currentTransformation.RotationMatrix = CreateMatrix.DenseIdentity(Of Double)(3)
+                    'x,y coincidence , z at first stage height
+                    currentTransformation.PositionVector = CreateVector.Dense(Of Double)({0,
+                                                                                          0,
+                                                                                          BondingHeight1,
+                                                                                          1})
+                    frames.Instance.solveS(currentTransformation)
+
+                End If
+            Case 10
+                If Assembly.Instance.CommandEndStatus(controlUnitsEnum.S) =
+                     IDrivable.endStatus.EXECUTION_END Then
+                    'second height
+                    Dim currentTransformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                               framesDefinition.DIE_REAL)
+
+                    'let all axis perfectly aligned
+                    currentTransformation.RotationMatrix = CreateMatrix.DenseIdentity(Of Double)(3)
+                    'x,y coincidence , z at first stage height
+                    currentTransformation.PositionVector = CreateVector.Dense(Of Double)({0,
+                                                                                          0,
+                                                                                          BondingHeight2,
+                                                                                          1})
+                    frames.Instance.solveS(currentTransformation)
+
+                End If
+            Case 20
+                'enable pd , start scanning
+                mainIOHardware.writeBit(outputAddress.GRIP_EN, True)
+
+                it = searchingGrid.GetEnumerator
+                'detect pd?
+            Case 30
+                If it.MoveNext Then
+                    Dim currentTransformation As htmEdgeElementary = dryAlignStartTransformation.Clone
+                    currentTransformation.PositionVector += it.Current
+                    frames.Instance.solveS(currentTransformation)
+                Else
+                    '-----------------------
+                    'search mission finished
+                    '-----------------------
+                    '3db = 0.707 
+                    'dataSet.parabolicFitting(recordedDatasLeftX)
+                End If
+            Case 40
+                If Assembly.Instance.CommandEndStatus(controlUnitsEnum.S) =
+                     IDrivable.endStatus.EXECUTION_END Then
+                    'read pd , record
+                    Dim leftValue As Double = 0
+                    Dim rightValue As Double = 0
+
+                    'recordedDatasLeftX.Add(New dataSet(it.Current(axisEntityEnum.X), leftValue))
+                    'recordedDatasLeftY.Add(New dataSet(it.Current(axisEntityEnum.Y), leftValue))
+
+                    'recordedDatasRightX.Add(New dataSet(it.Current(axisEntityEnum.X), rightValue))
+                    'recordedDatasRightY.Add(New dataSet(it.Current(axisEntityEnum.Y), rightValue))
+
+                Else
+                    '----------------------
+                    '   Settling
+                    '----------------------
+                End If
+
+            Case 30
+                'after searching
+                'inline requirment , the peak value should over 0.75V
+                'if passed , do searching
+                'after searching , do data fitting (parabolic) along X,Y , then you can get
+                'left peak XY
+                'right peak XY
+                'do dry alignment , align peak XY and yaw
+            Case 100
+
+        End Select
+
+        Return 0
+    End Function
+
+
+
+End Class

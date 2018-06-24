@@ -1,0 +1,280 @@
+﻿Imports Automation
+Imports Automation.Components.CommandStateMachine
+Imports Automation.Components.Services
+'todo add trigger clamp method : count by timer? distance? sensor?
+Public Class clsClampOnFly
+    Inherits systemControlPrototype
+    Implements IFinishableStation
+    Implements IModuleSingle
+
+
+    Dim _triggerClampMethod As triggerClampMethodEnum = triggerClampMethodEnum.METHOD_BY_SENSOR
+    Dim _motionMethod As motorControl.motorCommandEnum = motorControl.motorCommandEnum.GO_POSITION_COMBINED
+
+
+    ''' <summary>
+    ''' Used to synchronize with conveyor (optional)
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Property TargetPositionInfo As Func(Of shiftDataPackBase) Implements IModuleSingle.TargetPositionInfo
+
+
+#Region "Device declare"
+    Property motorClamp As motorControl = New motorControl()
+    Property motorConveyor As motorControl = New motorControl()
+    Property SpClamp As sensorControl = New sensorControl()
+#End Region
+#Region "External Data declare"
+    Property motorPointClamp As cMotorPoint
+    Property motorPointRelease As cMotorPoint
+    Public Property FinishableFlags As New flagController(Of IFinishableStation.controlFlags) Implements IFinishableStation.FinishableFlags
+    Public Property UpstreamStations As List(Of IFinishableStation) Implements IFinishableStation.UpstreamStations
+    Private isTriggered As Func(Of Boolean) = AddressOf isTriggerSensorDetected '查看觸發條件是否成立
+    Private isTriggerReseted As Func(Of Boolean) = Function() (True)
+
+    'Hsien , interface added , 2015.10.30
+    Public Property ConveyorTriggerDistanceInUnit As Double
+        Get
+            Return motorConveyor.pulse2Unit(ConveyorTriggerDistance)
+        End Get
+        Set(value As Double)
+            ConveyorTriggerDistance = motorConveyor.unit2Pulse(value)
+        End Set
+    End Property
+    Public Property ConveyorTriggerDistance As Double = 0 'record conveyor trigger position
+
+    Property triggerClampMethod As triggerClampMethodEnum
+        Get
+            Return _triggerClampMethod
+        End Get
+        Set(value As triggerClampMethodEnum)
+            _triggerClampMethod = value
+            Select Case value
+                Case triggerClampMethodEnum.METHOD_BY_SENSOR
+                    isTriggered = AddressOf isTriggerSensorDetected
+                    isTriggerReseted = Function() (True)
+                Case triggerClampMethodEnum.METHOD_BY_BELT_POSITION
+                    isTriggered = AddressOf isTriggerPositionDetected
+                    isTriggerReseted = AddressOf isTriggerPositionReseted
+            End Select
+        End Set
+    End Property
+    Property motionMethod As motorControl.motorCommandEnum
+        Get
+            Return _motionMethod
+        End Get
+        Set(value As motorControl.motorCommandEnum)
+            If value = motorControl.motorCommandEnum.GO_POSITION_COMBINED Then
+                _motionMethod = value
+                systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateMotionCombineExecute
+            ElseIf value = motorControl.motorCommandEnum.GO_POSITION Then
+                _motionMethod = value
+                systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateMotionSerialExecute
+            Else
+                MsgBox(Me.DeviceName & " motion method setting error!")
+            End If
+        End Set
+    End Property
+#End Region
+    Enum stateIgniteEnum
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _120
+        _300
+        _200
+
+        _5
+
+    End Enum 'only for stateIgnite
+    Enum stateExcuteEnum
+        _0
+        _10
+        _20
+    End Enum 'only for stateExcute
+    Enum triggerClampMethodEnum
+        METHOD_BY_BELT_POSITION
+        METHOD_BY_SENSOR
+    End Enum
+    Enum stateExcute2Enum
+        _0
+        _10
+        _20
+        _30
+    End Enum 'only for stateExcute
+
+    Sub alarmOccursHandler() Handles CentralAlarmObject.alarmOccured, PauseBlock.InterceptedEvent
+        If (MainState = systemStatesEnum.IGNITE) Then
+            motorClamp.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+        End If
+    End Sub
+    Sub alarmReleaseHandler() Handles CentralAlarmObject.alarmReleased, PauseBlock.UninterceptedEvent
+        If (MainState = systemStatesEnum.IGNITE) Then
+            motorClamp.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+        End If
+    End Sub
+    Protected Function stateIgnite() As Integer
+        Select Case CType(systemSubState, stateIgniteEnum)
+            Case stateIgniteEnum._0
+                If FinishableFlags.viewFlag(IFinishableStation.controlFlags.COMMAND_IGNITE) = True Then
+                    systemSubState = stateIgniteEnum._5
+                End If
+            Case stateIgniteEnum._5
+                If SpClamp.IsSensorCovered = True Then
+                    systemSubState = stateIgniteEnum._100
+                ElseIf motorClamp.drive(motorControl.motorCommandEnum.GO_HOME) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._10
+                End If
+            Case stateIgniteEnum._10
+                If motorClamp.drive(motorControl.motorCommandEnum.GO_POSITION, motorPointRelease) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._20
+                End If
+            Case stateIgniteEnum._20 '設定連續動作
+                motorClamp.PointTable.Clear()
+                motorClamp.PointTable.AddRange({motorPointClamp, motorPointRelease})
+                FinishableFlags.writeFlag(IFinishableStation.controlFlags.COMMAND_IGNITE, False)
+                systemMainState = systemStatesEnum.EXECUTE
+                'systemSubState = 0 '不需要，會自動歸0
+
+            Case stateIgniteEnum._100 'stop motor and check all sensor
+                If motorClamp.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._110
+                End If
+            Case stateIgniteEnum._110
+                If SpClamp.IsSensorCovered = True Then
+                    Dim apHomingSensorCovered As alarmContentSensor = New alarmContentSensor
+                    With apHomingSensorCovered '只有重試
+                        .Inputs = SpClamp.InputBit
+                        .PossibleResponse = alarmContextBase.responseWays.RETRY
+                        .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                        .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                                     Return True
+                                                                                 End Function
+                    End With
+                    CentralAlarmObject.raisingAlarm(apHomingSensorCovered)  'Hsien , 2015.06.15
+                Else
+                    systemSubState = stateIgniteEnum._0
+                End If
+        End Select
+        Return 0
+    End Function
+    Protected Function stateMotionCombineExecute() As Integer
+        Select Case CType(systemSubState, stateExcuteEnum)
+            Case stateExcuteEnum._0
+                If isTriggered.Invoke Then '偵測上緣觸發
+                    '將兩個動作一次下完(path table)，再看是否執行完
+                    motorClamp.drive(motorControl.motorCommandEnum.GO_POSITION_COMBINED)
+                    systemSubState = stateExcuteEnum._10
+                ElseIf (TargetPositionInfo IsNot Nothing) Then
+                    'assumed that rising edge detected before MA
+                    'not invoke yet(no wafer showed on position) , release conveyor
+                    TargetPositionInfo.Invoke.ModuleAction.readFlag(interlockedFlag.POSITION_OCCUPIED)
+                End If
+            Case stateExcuteEnum._10
+                If (motorClamp.CommandEndStatus = motorControl.statusEnum.EXECUTION_END) Then
+                    systemSubState = stateExcuteEnum._20
+                End If
+            Case stateExcuteEnum._20
+                If (isTriggerReseted.Invoke) Then
+
+                    'synchron after motion done , ensure all motion in regular sequence , Hsien , 2016.02.29
+                    If (TargetPositionInfo IsNot Nothing) Then
+                        TargetPositionInfo.Invoke.ModuleAction.readFlag(interlockedFlag.POSITION_OCCUPIED)
+                    End If
+
+                    systemSubState = stateExcuteEnum._0
+                ElseIf (TargetPositionInfo IsNot Nothing) Then
+                    TargetPositionInfo.Invoke.ModuleAction.readFlag(interlockedFlag.POSITION_OCCUPIED) 'not triggered release converyor 
+                End If
+
+        End Select
+
+        Return 0
+    End Function
+    Protected Function stateMotionSerialExecute() As Integer
+        Select Case CType(systemSubState, stateExcute2Enum)
+            Case stateExcute2Enum._0
+                If isTriggered.Invoke = True Then '偵測上緣觸發
+                    '將兩個動作一次下完(path table)，再看是否執行完
+                    motorClamp.drive(motorControl.motorCommandEnum.GO_POSITION, motorPointClamp)
+                    systemSubState = stateExcute2Enum._10
+                ElseIf TargetPositionInfo IsNot Nothing Then
+                    'Hsien , should synchron with converyo , make sure all motion sequnece 
+                    TargetPositionInfo.Invoke.ModuleAction.readFlag(interlockedFlag.POSITION_OCCUPIED) 'not triggered release converyor 
+                End If
+            Case stateExcute2Enum._10 'TODO 下一工作:需要加上夾住後，持續多少時間(可設)再放開
+                If (motorClamp.CommandEndStatus = motorControl.statusEnum.EXECUTION_END) Then
+                    motorClamp.drive(motorControl.motorCommandEnum.GO_POSITION, motorPointRelease)
+                    systemSubState = stateExcute2Enum._20
+                End If
+            Case stateExcute2Enum._20
+                If (motorClamp.CommandEndStatus = motorControl.statusEnum.EXECUTION_END) Then
+
+                    If (TargetPositionInfo IsNot Nothing) Then
+                        TargetPositionInfo.Invoke.ModuleAction.readFlag(interlockedFlag.POSITION_OCCUPIED) 'not triggered release converyor 
+                    End If
+
+                    systemSubState = stateExcute2Enum._30
+                End If
+            Case stateExcute2Enum._30
+                If (isTriggerReseted.Invoke) Then
+                    systemSubState = stateExcute2Enum._0
+                End If
+        End Select
+        Return 0
+    End Function
+    Function initMappingAndSetup()
+        Me.relatedFlags.AddRange(FinishableFlags.FlagElementsArray)
+
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateMotionCombineExecute
+        systemMainState = systemStatesEnum.IGNITE
+
+        motionMethod = _motionMethod 'set again ,
+        actionComponents.Remove(motorConveyor)  'Hsien , 2016.02.17 , do not inlcude the conveyor
+
+        initEnableAllDrives() 'enable 此class裡所有的driveBase
+        Return 0
+    End Function
+    Public Sub New()
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf Me.initMappingAndSetup))
+    End Sub
+    Protected Overrides Function process() As Integer
+        'Hsien , prevent interrupted by alarm , 2015.07.08
+
+        '----------------------------
+        'standard system control flow
+        '----------------------------
+
+        drivesRunningInvoke()
+
+        'on the executing mode ,wont be affectted by alarm , Hsien , 2015.07.08
+        If ((CentralAlarmObject.IsAlarmed AndAlso MainState = systemStatesEnum.IGNITE) OrElse
+            PauseBlock.IsPaused And systemSubState = stateExcuteEnum._0) Then
+            'do not pause during moving , Hsien , 2015.09.07
+            Return 0
+        End If
+
+        stateControl()
+        processProgress()
+
+        Return 0
+
+    End Function
+    Function isTriggerSensorDetected() As Boolean
+        Return SpClamp.RisingEdge.IsDetected
+    End Function
+    Function isTriggerPositionDetected() As Boolean
+        Return motorConveyor.CommandPosition >= ConveyorTriggerDistance
+    End Function
+    Function isTriggerPositionReseted() As Boolean
+        Return motorConveyor.CommandPosition < ConveyorTriggerDistance
+    End Function
+
+End Class

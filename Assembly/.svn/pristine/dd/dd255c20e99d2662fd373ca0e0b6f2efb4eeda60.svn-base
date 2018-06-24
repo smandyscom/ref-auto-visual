@@ -1,0 +1,15 @@
+﻿Imports System.Text
+Imports Microsoft.VisualStudio.TestTools.UnitTesting
+Imports FA
+<TestClass()> Public Class frameTest
+    ''' <summary>
+    ''' Check if exception
+    ''' </summary>
+    ''' <remarks></remarks>
+    <TestMethod()> Public Sub solveAbsAxAyTest1()
+        With frames.Instance
+            'Dim result = .solveAbsAxAy(itemsDefinition.C3_ORIGIN, framesDefinition.C4)
+        End With
+    End Sub
+
+End Class

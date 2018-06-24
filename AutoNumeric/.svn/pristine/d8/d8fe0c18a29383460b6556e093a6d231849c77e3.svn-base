@@ -1,0 +1,61 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+
+
+''' <summary>
+''' As a data pair
+''' </summary>
+''' <remarks></remarks>
+Public Class dataSet
+
+    ReadOnly Property Independent As Double
+        Get
+            Return __independent
+        End Get
+    End Property
+    ReadOnly Property Dependent As Double
+        Get
+            Return __dependent
+        End Get
+    End Property
+
+    Protected __independent As Double = 0
+    Protected __dependent As Double = 0
+
+    Sub New(__independent As Double,
+            __dependent As Double)
+        Me.__independent = __independent
+        Me.__dependent = __dependent
+    End Sub
+
+    ''' <summary>
+    ''' </summary>
+    ''' <param name="datas"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function parabolicFitting(datas As List(Of dataSet)) As Vector(Of Double)
+        'cascading data set 
+        Dim lhs As Matrix(Of Double) = CreateMatrix.DenseOfArray(Of Double)({})
+        Dim independencies As Matrix(Of Double) = CreateMatrix.DenseOfArray(Of Double)({})
+
+        For Each item As dataSet In datas
+            With item
+                lhs.Stack(CreateMatrix.DenseOfRowArrays(Of Double)({.__dependent}))
+                independencies.Stack(CreateMatrix.DenseOfRowArrays(Of Double)({Math.Pow(.__independent, 2), .__independent, 1}))
+            End With
+        Next
+
+        Return independencies.PseudoInverse() * CreateVector.Dense(Of Double)(lhs.ToColumnMajorArray)
+    End Function
+    ''' <summary>
+    ''' y = ax^2 + bx + c
+    ''' maximum x , 2ax+b = 0 , so x =-b/2a
+    ''' </summary>
+    ''' <param name="coeffs">3x1 vector</param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function parabolicMaximum(coeffs As Vector(Of Double)) As Double
+        Return -coeffs(1) / (2 * coeffs(0))
+    End Function
+
+
+End Class

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rectangleSearchRouteSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <RangeX>0.01</RangeX>
+  <RangeY>0.01</RangeY>
+  <StepX>0.0005</StepX>
+  <StepY>0.0005</StepY>
+  <Height>1</Height>
+</rectangleSearchRouteSetting>

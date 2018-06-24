@@ -1,0 +1,180 @@
+﻿Imports Automation
+Imports System.IO.Ports
+Imports System.Text
+Imports Automation.Components.Services
+
+Public Class clsRS232LightControl
+    Inherits systemControlPrototype
+
+    Enum eunmCmd
+        Connect
+        Close
+        LightSetting
+    End Enum
+
+#Region "External Data declare"
+    Public Property flagExcute As New flagController(Of eunmCmd)
+    Public Property Channel As Integer = 0
+    Public Property LightIntensity As Integer = 0    
+#End Region
+
+#Region "Device declare"
+    Public WithEvents Serial_232 As SerialPort = New SerialPort With {.PortName = "COM2", .BaudRate = 9600, .Parity = Parity.None, .StopBits = StopBits.One,
+                                                                     .DataBits = 8, .Encoding = Encoding.UTF8}
+#End Region
+
+#Region "Internal declare"
+    Private tmr As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(TimeSpan.TicksPerSecond * 1)}
+    Private strSend As String = ""
+    Private strReceived As String = ""
+#End Region
+
+    Sub New()
+        '將自定義起始化函式加入 通用起始化引動清單
+        Me.CentralMessenger = New messageHandler()
+        Me.CentralAlarmObject = New alarmManager()
+
+        Me.initialize = [Delegate].Combine(Me.initialize,
+                                           New Func(Of Integer)(AddressOf initLinkPause),
+                                           New Func(Of Integer)(AddressOf initEnableAllDrives),
+                                             New Func(Of Integer)(AddressOf Me.initLinkMessenger),
+                 New Func(Of Integer)(AddressOf initMappingAndSetup))
+    End Sub
+
+    Private Function initMappingAndSetup() As Integer
+        initSerialPort()
+
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        systemMainState = systemStatesEnum.EXECUTE
+        initEnableAllDrives()
+        Return 0
+    End Function
+
+    Private Function initSerialPort() As Integer
+        Try
+            Serial_232.Open()
+        Catch ex As Exception
+            MessageBox.Show(ex.Message)
+        End Try
+
+        Return 0
+    End Function
+
+    Public Function SerPort(PortName As String, BaudRate As Integer)
+        If Serial_232 IsNot Nothing Then
+            Try
+                Serial_232.Close()
+                Serial_232.PortName = PortName
+                Serial_232.BaudRate = BaudRate
+            Catch ex As Exception
+                MessageBox.Show(ex.Message)
+            End Try
+        End If
+        Return 0
+    End Function
+
+    Protected Function stateExecute() As Integer
+        Select Case systemSubState
+            Case 0
+                If flagExcute.viewFlag(eunmCmd.Close) Then
+                    systemSubState = 300
+
+                ElseIf flagExcute.viewFlag(eunmCmd.Connect) Then
+                    systemSubState = 200
+
+                ElseIf flagExcute.viewFlag(eunmCmd.LightSetting) Then
+                    systemSubState = 10
+                Else
+
+                End If
+
+            Case 10 ' check serial port opened
+                If Serial_232.IsOpen Then
+                    systemSubState = 20
+                Else
+                    sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " isn't opened.")
+                End If
+
+            Case 20 ' Set Light
+                If Channel <= 4 And Channel >= 1 And LightIntensity >= 0 And LightIntensity <= 255 Then
+                    strSend = Channel.ToString + "," + LightIntensity.ToString + vbCrLf
+                    Try
+                        Serial_232.Write(strSend)
+                    Catch ex As Exception
+                        sendMessage(ex.Message)
+                    End Try
+                    tmr.resetTimer()
+                    tmr.IsEnabled = True
+                    systemSubState = 30
+                Else
+                    sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + "Wrong command: " + Channel.ToString + "," + LightIntensity.ToString + vbCrLf)
+                    systemSubState = 90
+                End If
+
+
+            Case 30 ' check response
+                If strReceived <> "" Then
+                    If strReceived = strSend Then
+                        sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " light setting complete.")
+                    ElseIf strReceived = "E" + vbCrLf Then
+                        sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " Error strSend:" + strSend)
+                    Else
+                        sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " Error Message:" + strReceived)
+                    End If
+                    systemSubState = 90
+                ElseIf tmr.IsTimerTicked Then
+                    ' overtime
+                    sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " time out.")
+                    systemSubState = 90
+                Else
+
+                End If
+            Case 90
+                    'reset flag
+                    strReceived = ""
+                    strSend = ""
+                    flagExcute.writeFlag(eunmCmd.LightSetting, False)
+                    systemSubState = 0
+
+            Case 200
+                    Try
+                        Serial_232.Open()
+                    Catch ex As Exception
+                        sendMessage(ex.Message)
+                    End Try
+                    systemSubState = 210
+
+            Case 210
+                    If Serial_232.IsOpen Then
+                        sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " opened.")
+                    Else
+                        sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " open failed.")
+                    End If
+                    systemSubState = 220
+
+            Case 220
+                    flagExcute.writeFlag(eunmCmd.Connect, False)
+                    systemSubState = 0
+
+            Case 300
+                    Try
+                        Serial_232.Close()
+                    Catch ex As Exception
+                        sendMessage(ex.Message)
+                    End Try
+
+                    sendMessage(statusEnum.GENERIC_MESSAGE, Serial_232.PortName + " closed.")
+                    systemSubState = 310
+
+            Case 310
+                    flagExcute.writeFlag(eunmCmd.Close, False)
+                    systemSubState = 0
+
+        End Select
+        Return 0
+    End Function
+
+    Private Sub SerialPort_DataReceived(ByVal sender As Object, ByVal e As System.IO.Ports.SerialDataReceivedEventArgs) Handles Serial_232.DataReceived
+        strReceived = Serial_232.ReadExisting()
+    End Sub
+End Class

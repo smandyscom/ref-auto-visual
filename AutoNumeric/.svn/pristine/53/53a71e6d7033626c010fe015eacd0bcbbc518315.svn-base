@@ -1,0 +1,97 @@
+﻿Imports Automation
+Imports MathNet.Numerics.LinearAlgebra
+''' <summary>
+''' Offer the basic data procedure flow
+''' Output: error matrix updating
+''' </summary>
+''' <remarks></remarks>
+Public Class measureProcedureType1Base
+    Inherits systemControlPrototype
+
+    ReadOnly Property CurrentDataIndex As Integer
+        Get
+            Return dataPairCollection.Count - 1
+        End Get
+    End Property
+
+    'Dim nominalPosition As PositionVector = Nothing
+    'Dim realPosition As PositionVector = Nothing
+
+    ''' <summary>
+    ''' Used to store data pair
+    ''' Derived class should output this
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected dataPairCollection As List(Of measuredDataPair) = New List(Of measuredDataPair)
+    Protected dataGoal As Integer = 10
+
+    Protected correspondingErrorMatrix As errorHtm = Nothing
+    Protected lowerThreshold As Double = 0.001
+
+    Protected tryingTimes As Integer = 0
+    Protected tryingGoal As Integer = 3
+
+    Dim measureProcedureState As Integer = 0
+    Dim measureProcedure As stateFunction = Nothing
+
+    Enum dataHandlingState As Integer
+        MEASURING
+        MEASURED
+        DATA_HANDLING
+    End Enum
+
+    Function stateMeasure() As Integer
+
+        'through the measure procedure , get the ideal position and real position(measured one)
+        'turns into error gain/error form (error  = ideal-real)
+        'interating above procedure , until enough data count got
+        'processing datas, error vector/error matrix calculated
+        'update error matrix
+        'check if norm of error vector is smaller than low threshold
+        ' if yes , quit procedure
+        ' if no  , iterating
+
+        Select Case systemSubState
+            Case 0
+                If True Then
+                    systemSubState = 10
+                End If
+            Case 10
+                'measure procedures
+                If measureProcedure.Invoke(measureProcedureState) Then
+                    measureProcedureState = 0 'reset
+
+                    measuredDataPair.fitErrorVector(dataPairCollection)
+
+                        'update current error matrix
+                        correspondingErrorMatrix.ErrorVector = errorVector
+
+                        If errorVector.L2Norm <= lowerThreshold Then
+                            'converged , procedure done
+
+                        ElseIf errorVector.L2Norm > lowerThreshold And
+                            tryingTimes < tryingGoal Then
+
+                            dataPairCollection.Clear()
+                            tryingTimes += 1
+                            'not converged , but trying times not over the given value
+                            'keep trying
+                        Else
+                            'not converged, trying times over the given value
+                            'abort
+                        End If
+                   
+                Else
+                    '--------------------------
+                    '   Measuring
+                    '--------------------------
+                End If
+
+        End Select
+
+
+        Return 0
+    End Function
+
+
+End Class

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ioTable xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <InputModules>
+    <ioModule Ring="1" DeviceIP="0" Type="IP">
+      <DIO Serial="72057602644639744" Num="IP00" Symbol="EMG" Description="急停輸入" />
+      <DIO Serial="72057602644639745" Num="IP01" Symbol="PB_START" Description="啟動鍵" />
+      <DIO Serial="72057602644639746" Num="IP02" Symbol="PB_PAUSE" Description="暫停鍵" />
+      <DIO Serial="72057602644639747" Num="IP03" Symbol="PB_END" Description="結束鍵" />
+      <DIO Serial="72057602644639748" Num="IP04" Symbol="PB_LIFTER" Description="載入卡匣鈕" />
+      <DIO Serial="72057602644639749" Num="IP05" Symbol="A1a0" Description="卡匣上定位回" />
+      <DIO Serial="72057602644639750" Num="IP06" Symbol="A1a1" Description="卡匣上定位伸" />
+      <DIO Serial="72057602644639751" Num="IP07" Symbol="SpA1A" Description="卡匣到位" />
+      <DIO Serial="72057602644639752" Num="IP10" Symbol="VsB1A" Description="牙叉真空檢知" />
+      <DIO Serial="72057602644639753" Num="IP11" Symbol="VsC1A" Description="機械手真空檢知" />
+      <DIO Serial="72057602644639754" Num="IP12" Symbol="PB_UNLOCK" Description="門禁解鎖1" />
+      <DIO Serial="72057602644639755" Num="IP13" Symbol="SpA1D" Description="片有無" />
+      <DIO Serial="72057602644639756" Num="IP14" Symbol="PB_CLEAR" Description="門禁內淨空1" />
+      <DIO Serial="72057602644639757" Num="IP15" Symbol="SpA1I" Description="抓取區片子有無" />
+      <DIO Serial="72057602644639758" Num="IP16" Symbol="SpD1A" Description="檢測箱盒蓋" />
+      <DIO Serial="72057602644639759" Num="IP17" Symbol="SpD1B" Description="安全門開關" />
+      <DIO Serial="72057602644639760" Num="IP20" Symbol="SpD1C" Description="安全門開關" />
+      <DIO Serial="72057602644639761" Num="IP21" Symbol="SpD1D" Description="安全門開關" />
+      <DIO Serial="72057602644639762" Num="IP22" Symbol="HS0I0_Running" Description="儀器交握in0" />
+      <DIO Serial="72057602644639763" Num="IP23" Symbol="HS0I1_LRequest" Description="儀器交握in1" />
+      <DIO Serial="72057602644639764" Num="IP24" Symbol="HS0I2_URequest" Description="儀器交握in2" />
+      <DIO Serial="72057602644639765" Num="IP25" Symbol="HS0I3_Ready" Description="儀器交握in3" />
+      <DIO Serial="72057602644639766" Num="IP26" Symbol="Air" Description="總真空源" />
+      <DIO Serial="72057602644639767" Num="IP27" Symbol="SpD1E" Description="安全門開關" />
+      <DIO Serial="72057602644639768" Num="IP30" Symbol="LoadPause" Description="下料命令暫停" />
+      <DIO Serial="72057602644639769" Num="IP31" Symbol="alarm" Description="主設備報警" />
+      <DIO Serial="72057602644639770" Num="IP32" Symbol="VsA1A" Description="秤重手檢知" />
+      <DIO Serial="72057602644639771" Num="IP33" Symbol="VsA1B" Description="秤重手檢知" />
+      <DIO Serial="72057602644639772" Num="IP34" Symbol="" Description="" />
+      <DIO Serial="72057602644639773" Num="IP35" Symbol="" Description="" />
+      <DIO Serial="72057602644639774" Num="IP36" Symbol="" Description="" />
+      <DIO Serial="72057602644639775" Num="IP37" Symbol="" Description="" />
+    </ioModule>
+  </InputModules>
+  <OutputModules>
+    <ioModule Ring="1" DeviceIP="1" Type="OP">
+      <DIO Serial="72057602644705280" Num="OP00" Symbol="L_Start" Description="啟動燈" />
+      <DIO Serial="72057602644705281" Num="OP01" Symbol="L_Pause1" Description="暫停燈" />
+      <DIO Serial="72057602644705282" Num="OP02" Symbol="L_End" Description="結束燈" />
+      <DIO Serial="72057602644705283" Num="OP03" Symbol="R_OFF" Description="電源OFF的Timer" />
+      <DIO Serial="72057602644705284" Num="OP04" Symbol="L_Red" Description="紅色燈(三色塔燈)" />
+      <DIO Serial="72057602644705285" Num="OP05" Symbol="L_Yellow" Description="黃色燈(三色塔燈)" />
+      <DIO Serial="72057602644705286" Num="OP06" Symbol="L_Green" Description="綠色燈(三色塔燈)" />
+      <DIO Serial="72057602644705287" Num="OP07" Symbol="L_Blue" Description="藍色燈(三色塔燈)" />
+      <DIO Serial="72057602644705288" Num="OP10" Symbol="L_Buzzer" Description="蜂嗚器(三色塔燈)" />
+      <DIO Serial="72057602644705289" Num="OP11" Symbol="LP_UNLOCK" Description="門禁解鎖燈" />
+      <DIO Serial="72057602644705290" Num="OP12" Symbol="LP_CLEAR" Description="門禁淨空燈" />
+      <DIO Serial="72057602644705291" Num="OP13" Symbol="VgB1A" Description="牙插真空產生" />
+      <DIO Serial="72057602644705292" Num="OP14" Symbol="VbB1A" Description="牙插真空破壞" />
+      <DIO Serial="72057602644705293" Num="OP15" Symbol="VgC1A" Description="手臂真空產生" />
+      <DIO Serial="72057602644705294" Num="OP16" Symbol="VbC1A" Description="手臂真空破壞" />
+      <DIO Serial="72057602644705295" Num="OP17" Symbol="DoorCtrl1" Description="門禁上鎖1" />
+      <DIO Serial="72057602644705296" Num="OP20" Symbol="DoorCtrl2" Description="門禁上鎖2" />
+      <DIO Serial="72057602644705297" Num="OP21" Symbol="DoorCtrl3" Description="門禁上鎖3" />
+      <DIO Serial="72057602644705298" Num="OP22" Symbol="DoorCtrl4" Description="門禁上鎖4" />
+      <DIO Serial="72057602644705299" Num="OP23" Symbol="HS0P0_Running" Description="儀器交握out0" />
+      <DIO Serial="72057602644705300" Num="OP24" Symbol="HS0P1_TR_Request" Description="儀器交握out1" />
+      <DIO Serial="72057602644705301" Num="OP25" Symbol="HS0P2_LBusy" Description="儀器交握out2" />
+      <DIO Serial="72057602644705302" Num="OP26" Symbol="HS0P3_UBusy" Description="儀器交握out3" />
+      <DIO Serial="72057602644705303" Num="OP27" Symbol="HS0P4_Complete" Description="儀器交握out4" />
+      <DIO Serial="72057602644705304" Num="OP30" Symbol="CyA1A" Description="卡匣固定" />
+      <DIO Serial="72057602644705305" Num="OP31" Symbol="" Description="" />
+      <DIO Serial="72057602644705306" Num="OP32" Symbol="" Description="" />
+      <DIO Serial="72057602644705307" Num="OP33" Symbol="" Description="" />
+      <DIO Serial="72057602644705308" Num="OP34" Symbol="" Description="" />
+      <DIO Serial="72057602644705309" Num="OP35" Symbol="" Description="" />
+      <DIO Serial="72057602644705310" Num="OP36" Symbol="" Description="" />
+      <DIO Serial="72057602644705311" Num="OP37" Symbol="" Description="" />
+    </ioModule>
+  </OutputModules>
+</ioTable>

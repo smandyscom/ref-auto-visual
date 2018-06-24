@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cureSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ExposureTime>10</ExposureTime>
+  <LensPercentage>50</LensPercentage>
+  <Filename>D:\ASA-04-124 code svn\Assembly\bin\Debug\Data\measure\FA.cureSetting.xml</Filename>
+</cureSetting>

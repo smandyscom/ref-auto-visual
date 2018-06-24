@@ -1,0 +1,168 @@
+﻿Imports Automation
+Imports System.ComponentModel
+Imports System.Drawing.Design
+Imports System.Xml.Serialization
+
+Public Enum loadingDecision
+    ByEncoder
+    時間
+End Enum
+
+
+Public Class settingBlock
+    Inherits settingBase
+
+    <Browsable(False)>
+    Property InletCount As Integer = 0
+
+    '<Category("Setting Operation")> <DisplayName("脈波數/單位")> Property PulsePermm As Double = 1000 / 15
+
+    '<Category("Setting Operation")> <[ReadOnly](False)> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("Lane-1 致能")> Property Lane1Disable As Boolean = False
+    '<Category("Setting Operation")> <[ReadOnly](False)> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("Lane-2 致能")> Property Lane2Disable As Boolean = False
+    '<Category("Setting Operation")> <DisplayName("水道啟用")> Property LaneMask() As Boolean() = {True, True, True, True, True}
+    <Category("Setting Operation")> <DisplayName("156P放片位置微調X(mm)")> Property _156pPlacePositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156P放片位置微調Y(mm)")> Property _156pPlacePositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156P放片位置微調R(mm)")> Property _156pPlacePositionOffsetR As Integer
+
+    <Category("Setting Operation")> <DisplayName("156P取片位置微調X(mm)")> Property _156pPickPositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156P取片位置微調Y(mm)")> Property _156pPickPositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156P取片位置微調R(mm)")> Property _156pPickPositionOffsetR As Integer
+
+    <Category("Setting Operation")> <DisplayName("156P校正片位置微調X(mm)")> Property _156pCalibrationPositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156P校正片位置微調Y(mm)")> Property _156pCalibrationPositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156P校正片位置微調R(mm)")> Property _156pCalibrationPositionOffsetR As Integer
+
+    <Category("Setting Operation")> <DisplayName("156M放片位置微調X(mm)")> Property _156mPlacePositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156M放片位置微調Y(mm)")> Property _156mPlacePositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156M放片位置微調R(mm)")> Property _156mPlacePositionOffsetR As Integer
+
+    <Category("Setting Operation")> <DisplayName("156M取片位置微調X(mm)")> Property _156mPickPositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156M取片位置微調Y(mm)")> Property _156mPickPositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156M取片位置微調R(mm)")> Property _156mPickPositionOffsetR As Integer
+
+    <Category("Setting Operation")> <DisplayName("156M校正片位置微調X(mm)")> Property _156mCalibrationPositionOffsetX As Integer
+    <Category("Setting Operation")> <DisplayName("156M校正片位置微調Y(mm)")> Property _156mCalibrationPositionOffsetY As Integer
+    <Category("Setting Operation")> <DisplayName("156M校正片位置微調R(mm)")> Property _156mCalibrationPositionOffsetR As Integer
+
+
+    '<Category("Setting Operation")> <DisplayName("水道3位置微調(mm)")> Property WaterFlow3Offset As Integer
+    '<Category("Setting Operation")> <DisplayName("水道4位置微調(mm)")> Property WaterFlow4Offset As Integer
+    '<Category("Setting Operation")> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("Host Accept 致能")> Property HostAcceptEnable As Boolean = False
+    '<Category("Setting Operation")> <DisplayName("Lane1定位觸發位置(mm)")> Property Clamp1Offset As Integer
+    '<Category("Setting Operation")> <DisplayName("Lane2定位觸發位置(mm)")> Property Clamp2Offset As Integer
+    '<Category("Setting Operation")> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("硅片吸取第一段馬達上升功能致能")> Property EnableUpSecondPos As Boolean
+    '<Category("Setting Operation")> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("硅片到位下降功能致能")> Property EnableDownSmallDist As Boolean
+    '<Category("Setting Operation")> <DisplayName("硅片上升到位檢查時間 (ms)")> Property WaferReachCheckTime As Integer
+    '<Category("Setting Operation")> <DisplayName("硅片吹氣完成等待時間 (ms)")> Property AfterBlowDelayTime As Integer
+    '<Category("Setting Operation")> <DisplayName("硅片到位On連續吹氣等待時間 (ms)")> Property ConBlowWaferOnWaitTime As Integer
+    '<Category("Setting Operation")> <DisplayName("硅片到位Off連續吹氣等待時間 (ms)")> Property ConBlowWaferOffWaitTime As Integer
+
+    '<Category("上料設定")> <DisplayName("上料放片距離限制")> <Description("上料放片距離依據時間 或 主製程入料輸送帶Encoder訊號")> Property loadingOption As loadingDecision = loadingDecision.時間
+    '<Category("上料設定")> <DisplayName("放片距離限制")> Property LoadingDistanceLimit As Double = 1000 / 15
+    '<Category("上料設定")> <DisplayName("放片時間限制 (s)")> Property timerInterval As Double = 4
+    '<Category("上料設定")> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("檢查IOX Ready 訊號")> Property IsCheckIOXsignal As Boolean = True
+    '<Category("上料設定")> <Browsable(False)> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("與下料機連線")> Property IsCommunuicatingWithUnloader As Boolean = False
+    '<Category("上料設定")> <TypeConverter(GetType(trueFalseTypeConvertor1))> <DisplayName("檢查下料機訊號")> Property IsCheckHeartbeat As Boolean = False
+
+
+    '<Category("吹氣設定")> <DisplayName("間斷吹氣的次數")> Property BlowTimes As Short = 3
+    '<Category("吹氣設定")> <DisplayName("間斷吹氣On的時間 ms")> Property BlowOnTime As Single = 100
+    '<Category("吹氣設定")> <DisplayName("間斷吹氣Off的時間 ms")> Property BlowOffTime As Single = 100
+
+    '<Category("秤重設定")> <DisplayName("片數間隔")> Property NumToMeasureWeight As Integer = 100
+    '<Category("秤重設定")> <DisplayName("秤重啟用")> <TypeConverter(GetType(trueFalseTypeConvertor1))> Property IsWeightStationEnable As Boolean = False
+    '<EditorAttribute(GetType(System.Windows.Forms.Design.), GetType(System.Drawing.Design.UITypeEditor))> _
+
+    'Response to clien request , enable buffer setting 
+
+
+    <TypeConverter(GetType(utilitiesUI.trueFalseTypeConvertor1))>
+    <Category("Setting Operation")>
+    <DisplayName("If RFID enabled")>
+    Property RFIDEnabled As Boolean = False         'Hsien , 2015.10.26 , used to control whether enabled the RFID
+
+
+    <XmlIgnore, DisplayName("機器人檔"), Editor(GetType(utilitiesUI.FileNamesEditor), GetType(System.Drawing.Design.UITypeEditor))> _
+    Property robtofilerelpath() As String
+        Get
+            Return _RobotFileRelPath
+        End Get
+        Set(value As String)
+            'If value Is Nothing Then Exit Property
+            'Dim rootpath As String = (My.Application.Info.DirectoryPath & "\data\scara_prj\").ToLower
+            'Dim relaitvepath As String = MakeRelativePath(rootpath, value)
+            'If relaitvepath.Contains("..") Then
+            '    MsgBox("請選取" & rootpath & "路徑下的檔案!")
+            'Else
+            '_RobotFileRelPath = relaitvepath
+            'End If
+            _RobotFileRelPath = value
+        End Set
+    End Property
+    Dim _myColor As Color
+    Property myColor As Color
+        Get
+            Return _myColor
+        End Get
+        Set(value As Color)
+            _myColor = value
+        End Set
+    End Property
+    Private Function MakeRelativePath(fromPath As String, toPath As String) As String
+        If String.IsNullOrEmpty(fromPath) Then Throw New ArgumentException(String.Format("fromPath({0}) is not correnct!", fromPath))
+        If String.IsNullOrEmpty(toPath) Then Throw New ArgumentException(String.Format("toPath({0}) is not correnct!", toPath))
+        Dim fromUri As Uri = New Uri(fromPath)
+        Dim toUri As Uri = New Uri(toPath)
+        If fromUri.Scheme <> toUri.Scheme Then Return toPath 'path can't be made relative.
+        Dim relativeUri = fromUri.MakeRelativeUri(toUri)
+        Dim relativePath As String = Uri.UnescapeDataString(relativeUri.ToString)
+        If toUri.Scheme.Equals("file", StringComparison.InvariantCultureIgnoreCase) Then
+            relativePath = relativePath.Replace(System.IO.Path.AltDirectorySeparatorChar, System.IO.Path.DirectorySeparatorChar)
+        End If
+        Return relativePath
+    End Function
+    Property _RobotFileRelPath As String
+
+    Private Function OpenFileDialog__(initPaht As String) As Object
+        Dim ofd As New OpenFileDialog
+        ofd.ShowDialog()
+        Return Nothing
+    End Function
+
+End Class
+Class trueFalseTypeConvertor1
+    Inherits TypeConverter
+
+    Public Overrides Function GetStandardValuesSupported(context As ITypeDescriptorContext) As Boolean
+        Return True
+    End Function
+
+    Public Overrides Function GetStandardValues(context As ITypeDescriptorContext) As TypeConverter.StandardValuesCollection
+        Return New TypeConverter.StandardValuesCollection(New List(Of Boolean) From {True, False})
+    End Function
+
+    Public Overrides Function ConvertFrom(context As ITypeDescriptorContext, culture As Globalization.CultureInfo, value As Object) As Object
+
+        If (value = "啟用") Then
+            Return True
+        Else
+            Return False
+        End If
+
+    End Function
+
+    Public Overrides Function ConvertTo(context As ITypeDescriptorContext, culture As Globalization.CultureInfo, value As Object, destinationType As Type) As Object
+
+        If (value) Then
+            Return "啟用"
+        Else
+            Return "停用"
+        End If
+
+
+    End Function
+
+    Public Overrides Function CanConvertFrom(context As ITypeDescriptorContext, sourceType As Type) As Boolean
+        Return True
+    End Function
+End Class

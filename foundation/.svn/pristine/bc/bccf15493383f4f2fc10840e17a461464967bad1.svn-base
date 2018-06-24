@@ -1,0 +1,430 @@
+﻿Imports Automation
+Imports Automation.Components.Services
+Imports Automation.Components.CommandStateMachine
+Imports Automation.mainIOHardware
+Public Class CassetteButton : Inherits systemControlPrototype
+    Implements IFinishableStation
+    Public Property _FinishableFlag As New flagController(Of IFinishableStation.controlFlags) Implements IFinishableStation.FinishableFlags
+    Public Property _UpstreamStation As List(Of IFinishableStation) Implements IFinishableStation.UpstreamStations
+
+    Public buttonFlags As flagController(Of flagsInLoaderUnloader)
+
+    Dim btnUnloadWait As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Dim movUnloadWait As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+
+    Dim btnLoadWait As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Dim movLoadWait As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+
+    Dim PB_Unload_Step As ULong
+    Public PB_Unload As sensorControl = New sensorControl With {.IsEnabled = True}
+    Public LP_Unload As ULong
+
+    Dim PB_UnloadConveyerMove_Step As ULong
+    Public PB_UnloadConveyerMove As sensorControl = New sensorControl With {.IsEnabled = True}
+    Public LP_UnloadConveyerMove As ULong
+
+    Dim PB_Load_Step As ULong
+    Public PB_Load As sensorControl = New sensorControl With {.IsEnabled = True}
+    Public LP_Load As ULong
+
+    Dim blnLampOn As Boolean
+
+    Dim PB_LoadConveyerMove_Step As ULong
+    Public PB_LoadConveyerMove As sensorControl = New sensorControl With {.IsEnabled = True}
+    Public LP_LoadConveyerMove As ULong
+
+    'Public IN_ConveyerMotor As motorControl
+    'Public OUT_ConveyerMotor As motorControl
+    Public IN_ConveyerMotor As IDrivable
+    Public OUT_ConveyerMotor As IDrivable
+
+
+    Friend IN_ConveyerPosSen2 As sensorControl '= New sensorControl
+
+    '作動時Off , allocating before initmapping and setup , Hsien , 2015.06.24
+    Public SafeStopper As ActuatorInfo = New ActuatorInfo With {.sw = IS_OFF}
+    Public SafeStoperSen As SensorInfo = New SensorInfo With {.sensor = New sensorControl,
+                                                              .sw = IS_OFF,
+                                                              .status = IS_OFF}
+
+    Public Function stateIgnite() As Integer
+        If _FinishableFlag.viewFlag(IFinishableStation.controlFlags.COMMAND_IGNITE) = True Then
+            _FinishableFlag.writeFlag(IFinishableStation.controlFlags.COMMAND_IGNITE, False)
+            systemMainState = systemStatesEnum.EXECUTE
+        End If
+        Return 0
+    End Function
+
+    Public Function stateExecute() As Integer
+        Call CheckUnloadButton()
+        Call CassetteMoveOut()
+        Call CheckLoadButton()
+        Call CassetteMoveIn()
+        Return 0
+    End Function
+    Private Sub CheckUnloadButton()
+
+        Select Case PB_Unload_Step
+            Case 0 '檢查按鈕是否失能
+                If Not buttonFlags.viewFlag(flagsInLoaderUnloader.UnloadButtonDisable_f) Then
+                    PB_Unload_Step = 10
+                End If
+            Case 10 '檢查按鈕是否有按下
+                If PB_Unload.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    If Not buttonFlags.viewFlag(flagsInLoaderUnloader.UnloadButtonDisable_f) Then '檢查按鈕是否仍然在失能模式
+                        buttonFlags.writeFlag(flagsInLoaderUnloader.UnloadButtonBusy_f, True)
+                        btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 2)
+                        btnUnloadWait.IsEnabled = True    'restart
+                        If SafeStopper.sw = IS_ON Then Call writeBit(SafeStopper.Actuator, False) '擋卡匣氣缸縮回(單一感測器無作動伸出時感測器On,作動縮回Off)
+                        PB_Unload_Step = 15
+                    End If
+                    PB_Unload_Step = 15
+
+                ElseIf (PB_Unload.OnTimer.TimeElapsed.TotalMilliseconds <= 100) Then
+
+                    PB_Unload_Step = 0
+
+                End If
+
+
+            Case 15 '擋卡匣氣缸縮回
+                If SafeStoperSen.sw = IS_ON Then
+                    If (SafeStoperSen.status = IS_ON And SafeStoperSen.sensor.IsSensorCovered) Or (SafeStoperSen.status = IS_OFF And (Not SafeStoperSen.sensor.IsSensorCovered)) Then
+                        btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                        btnUnloadWait.IsEnabled = True    'restart
+                        PB_Unload_Step = 20
+                    Else
+                        If btnUnloadWait.IsTimerTicked Then
+                            Dim ap As New alarmContentSensor
+                            With ap
+                                .Sender = Me
+                                .Inputs = SafeStoperSen.sensor.InputBit
+                                .PossibleResponse = alarmContextBase.responseWays.RETRY
+                                If SafeStoperSen.status = IS_ON Then
+                                    .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                                Else
+                                    .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                                End If
+                                .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                                             Return True
+                                                                                         End Function
+                                CentralAlarmObject.raisingAlarm(ap)
+                            End With
+                        End If
+                    End If
+                Else
+                    btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnUnloadWait.IsEnabled = True    'restart
+                    PB_Unload_Step = 20
+                End If
+            Case 20 '等待一段時間
+                If btnUnloadWait.IsTimerTicked Then
+                    Call writeBit(LP_Unload, True) '按鈕燈亮
+                    PB_Unload_Step = 30
+                End If
+            Case 30
+
+                If PB_Unload.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnUnloadWait.IsEnabled = True    'restart
+                    PB_Unload_Step = 50
+                End If
+
+
+            Case 50 '檢查按鈕往上
+                If btnUnloadWait.IsTimerTicked Then
+                    If PB_Unload.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                        If SafeStopper.sw = IS_ON Then Call writeBit(SafeStopper.Actuator, False) '擋卡匣氣缸伸出
+                        Call writeBit(LP_Unload, False) '把按鈕燈滅
+                        btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 2)
+                        btnUnloadWait.IsEnabled = True    'restart
+                        PB_Unload_Step = 60
+                    Else
+                        PB_Unload_Step = 30
+                    End If
+                End If
+
+            Case 60 '擋卡匣氣缸伸出
+                If SafeStoperSen.sw = IS_ON Then
+                    If (SafeStoperSen.status = IS_ON And (Not SafeStoperSen.sensor.IsSensorCovered)) Or (SafeStoperSen.status = IS_OFF And SafeStoperSen.sensor.IsSensorCovered) Then
+                        btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                        btnUnloadWait.IsEnabled = True    'restart
+                        PB_Unload_Step = 70
+                    Else
+                        If btnUnloadWait.IsTimerTicked Then
+                            Dim ap As New alarmContentSensor
+                            With ap
+                                .Sender = Me
+                                .Inputs = SafeStoperSen.sensor.InputBit
+                                .PossibleResponse = alarmContextBase.responseWays.RETRY
+                                If SafeStoperSen.status = IS_ON Then
+                                    .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                                Else
+                                    .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                                End If
+                                .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                                             Return True
+                                                                                         End Function
+                                CentralAlarmObject.raisingAlarm(ap)
+                            End With
+                        End If
+                    End If
+                Else
+                    btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnUnloadWait.IsEnabled = True    'restart
+                    PB_Unload_Step = 70
+                End If
+            Case 70 'MDA1 or MDA4 馬達剎車
+                If OUT_ConveyerMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    btnUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnUnloadWait.IsEnabled = True    'restart
+                    PB_Unload_Step = 80
+                End If
+            Case 80 '等待一段時間後返回
+                If btnUnloadWait.IsTimerTicked Then
+                    PB_Unload_Step = 90
+                End If
+            Case 90 '完成
+                buttonFlags.writeFlag(flagsInLoaderUnloader.UnloadButtonBusy_f, False) '重置忙碌旗標
+                PB_UnloadConveyerMove_Step = 0 '重置移動程序
+                PB_Unload_Step = 0 '完成
+        End Select
+    End Sub
+    Private Sub CassetteMoveOut()
+
+        If Not buttonFlags.viewFlag(flagsInLoaderUnloader.UnloadButtonBusy_f) Then Exit Sub
+
+        Select Case PB_UnloadConveyerMove_Step
+            Case 0 '檢查按鈕是否被按下
+                If PB_UnloadConveyerMove.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    movUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    movUnloadWait.IsEnabled = True    'restart
+                    PB_UnloadConveyerMove_Step = 5
+                End If
+            Case 5 '等待一段時間
+                If movUnloadWait.IsTimerTicked Then
+                    PB_UnloadConveyerMove_Step = 10
+                End If
+            Case 10 '再次檢查按鈕
+                If PB_UnloadConveyerMove.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    Call writeBit(LP_UnloadConveyerMove, True)
+                    PB_UnloadConveyerMove_Step = 15
+                Else
+                    PB_UnloadConveyerMove_Step = 0
+                End If
+            Case 15 '移出卡匣馬達移動
+                If OUT_ConveyerMotor.drive(motorControl.motorCommandEnum.JOG, UnloadConveyerUsedPositions.MOTOR_POSITION_1) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    PB_UnloadConveyerMove_Step = 20
+                End If
+            Case 20 '等待馬達放開
+                If PB_UnloadConveyerMove.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    Call writeBit(LP_UnloadConveyerMove, False)
+
+                    PB_UnloadConveyerMove_Step = 25
+                End If
+            Case 25 '移出卡匣馬達剎車
+                If OUT_ConveyerMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                     IDrivable.endStatus.EXECUTION_END Then
+                    movUnloadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    movUnloadWait.IsEnabled = True    'restart
+                    PB_UnloadConveyerMove_Step = 30
+                End If
+            Case 30 '返回
+                If movUnloadWait.IsTimerTicked Then
+                    PB_UnloadConveyerMove_Step = 0
+                End If
+        End Select
+    End Sub
+    Private Sub CheckLoadButton()
+
+        Select Case PB_Load_Step
+            Case 0
+                'Hsien , 2015.04.13
+                If (buttonFlags.viewFlag(flagsInLoaderUnloader.Start_f)) Then
+                    btnLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 200)
+                    btnLoadWait.IsEnabled = True    'restart
+                    PB_Load_Step = 5
+                End If
+            Case 5 '檢查按鈕有無去能
+                If Not buttonFlags.viewFlag(flagsInLoaderUnloader.LoadButtonDisable_f) Then
+
+                    If PB_Load.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                        PB_Load_Step = 10 '按下按鈕
+                    Else '如果沒有按下按鈕,檢查卡匣是否備便
+                        If Not buttonFlags.viewFlag(flagsInLoaderUnloader.CasOn_UD_ConveyerReady_f) Then '檢查卡匣是否備便
+                            If btnLoadWait.IsTimerTicked Then
+                                If Not blnLampOn Then
+                                    Call writeBit(LP_Load, True)
+                                    blnLampOn = True
+                                Else
+                                    Call writeBit(LP_Load, False)
+                                    blnLampOn = False
+                                End If
+                                btnLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 200)
+                                btnLoadWait.IsEnabled = True
+                            End If
+                        Else
+                            If blnLampOn Then Call writeBit(LP_Load, False) : blnLampOn = False
+                        End If
+                    End If
+                Else
+                    If blnLampOn Then Call writeBit(LP_Load, False) : blnLampOn = False
+                End If
+            Case 10 '再次檢查按鈕
+                If PB_Load.OnTimer.TimeElapsed.TotalMilliseconds > 100 AndAlso
+                    Not buttonFlags.viewFlag(flagsInLoaderUnloader.LoadButtonDisable_f) Then
+
+                    buttonFlags.writeFlag(flagsInLoaderUnloader.LoadButtonBusy_f, True)
+                    '檢查按鈕是否仍然在去能狀況
+                    '在按鈕模式
+                    PB_Load_Step = 15
+                Else
+                    PB_Load_Step = 0
+                End If
+            Case 15 '按鈕燈亮
+                Call writeBit(LP_Load, True)
+                PB_Load_Step = 20
+            Case 20 '延遲一段時間
+                btnLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                btnLoadWait.IsEnabled = True    'restart
+                PB_Load_Step = 25
+            Case 25 '等待一段時間
+                If btnLoadWait.IsTimerTicked Then
+                    PB_Load_Step = 50
+                End If
+            Case 50
+                If PB_Load.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    btnLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnLoadWait.IsEnabled = True    'restart
+                    PB_Load_Step = 55
+                End If
+            Case 55 '檢查按鈕往上
+                If btnLoadWait.IsTimerTicked Then
+                    If PB_Load.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                        Call writeBit(LP_Load, False) '把按鈕燈滅
+                        PB_Load_Step = 65
+                    Else
+                        PB_Load_Step = 50
+                    End If
+                End If
+            Case 65 '假如MDD3 or MDD4 在移動狀態,作剎車
+                If IN_ConveyerMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    btnLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    btnLoadWait.IsEnabled = True    'restart
+                    PB_Load_Step = 75
+                End If
+            Case 75
+                If btnLoadWait.IsTimerTicked Then
+                    PB_LoadConveyerMove_Step = 0 '重置移動程序
+                    PB_Load_Step = 105
+                End If
+                '======================================
+                'Case 100 '檢查感測器
+
+                '    If IN_ConveyerPosSen2.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                '        buttonFlags.writeFlag(flagsInLoaderUnloader.LoadButtonBusy_f, False) '不在按鈕模式
+                '        PB_Load_Step = 0  '完成
+                '    Else
+                '        PB_Load_Step = 105
+                '    End If
+
+                '    sensorControl.activateSensorControl(IN_ConveyerPosSen2, PB_Load_Step = 100)
+
+            Case 105 '開始移動卡匣
+                If IN_ConveyerMotor.drive(motorControl.motorCommandEnum.JOG, LoadConveyerUsedPositions.MOTOR_POSITION_1) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    btnLoadWait.TimerGoal = New TimeSpan(0, 0, 30)
+                    btnLoadWait.IsEnabled = True    'restart
+                    PB_Load_Step = 110
+                End If
+
+            Case 110 '檢查極限(SLD15 or SLD16 )
+                If IN_ConveyerPosSen2.OnTimer.TimeElapsed.TotalMilliseconds > 100 Or
+                    btnLoadWait.IsTimerTicked Then
+
+                    If IN_ConveyerMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                        IDrivable.endStatus.EXECUTION_END Then
+                        PB_Load_Step = 115
+                    End If
+
+                End If
+
+                sensorControl.activateSensorControl(IN_ConveyerPosSen2, PB_Load_Step = 110)
+
+            Case 115 '重置忙碌旗標
+                buttonFlags.writeFlag(flagsInLoaderUnloader.LoadButtonBusy_f, False) '不在按鈕模式
+                sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Cassette Button Unlocked"))
+                PB_Load_Step = 0 '完成
+        End Select
+    End Sub
+    Private Sub CassetteMoveIn()
+        Select Case PB_LoadConveyerMove_Step
+            Case 0 '檢查按鈕是否按下
+                If Not readBit(LP_Load) Then Exit Sub '按鈕在上
+                If Not buttonFlags.viewFlag(flagsInLoaderUnloader.LoadButtonBusy_f) Then Exit Sub '不在按鈕模式
+
+                If PB_LoadConveyerMove.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    movLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    movLoadWait.IsEnabled = True    'restart
+                    PB_LoadConveyerMove_Step = 5
+                End If
+            Case 5 '等待一段時間
+                If movLoadWait.IsTimerTicked Then
+                    PB_LoadConveyerMove_Step = 10
+                End If
+            Case 10 '再次確認按鈕
+                If PB_LoadConveyerMove.OnTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    Call writeBit(LP_LoadConveyerMove, True)
+                    PB_LoadConveyerMove_Step = 20
+                Else
+                    PB_LoadConveyerMove_Step = 0
+                End If
+
+            Case 20 '載入馬逹運轉
+                If IN_ConveyerMotor.drive(motorControl.motorCommandEnum.JOG, LoadConveyerUsedPositions.MOTOR_POSITION_1) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    PB_LoadConveyerMove_Step = 25
+                End If
+            Case 25 '等待按鈕放開或到達感測器
+
+
+                If PB_LoadConveyerMove.OffTimer.TimeElapsed.TotalMilliseconds > 100 Then
+                    Call writeBit(LP_LoadConveyerMove, False) '移動燈滅
+                    PB_LoadConveyerMove_Step = 30
+                End If
+
+                sensorControl.activateSensorControl(IN_ConveyerPosSen2, PB_LoadConveyerMove_Step = 25)
+
+            Case 30 '載入馬逹剎車
+                If IN_ConveyerMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                    IDrivable.endStatus.EXECUTION_END Then
+                    movLoadWait.TimerGoal = New TimeSpan(0, 0, 0, 0, 150)
+                    movLoadWait.IsEnabled = True    'restart
+                    PB_LoadConveyerMove_Step = 35
+                End If
+            Case 35 '等待一段時間
+                If movLoadWait.IsTimerTicked Then
+                    PB_LoadConveyerMove_Step = 0
+                End If
+        End Select
+    End Sub
+
+    Sub New()
+        '將自定義起始化函式加入 通用起始化引動清單
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf initMappingAndSetup))
+    End Sub
+
+    Function initMappingAndSetup() As Integer
+        relatedFlags.AddRange(buttonFlags.FlagElementsArray)
+        '本站主狀態函式設定
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite       '鍊結主狀態函式
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute     '鍊結主狀態函式
+        systemMainState = systemStatesEnum.IGNITE   '設定初始主狀態
+        'initEnableAllDrives()
+        Return 0
+    End Function
+End Class
+

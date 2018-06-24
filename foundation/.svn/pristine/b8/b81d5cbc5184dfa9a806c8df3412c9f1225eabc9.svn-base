@@ -1,0 +1,571 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProductVersion>
+    </ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{60D77D5D-86E0-4CCA-A216-8861067F186C}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <StartupObject>
+    </StartupObject>
+    <RootNamespace>Automation</RootNamespace>
+    <AssemblyName>Foundations</AssemblyName>
+    <FileAlignment>512</FileAlignment>
+    <MyType>Windows</MyType>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkProfile>Client</TargetFrameworkProfile>
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <PublishUrl>D:\Delta Automation\Automation Simple Cassette\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Disk</InstallFrom>
+    <UpdateEnabled>false</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ProductName>Automation Simple Cassette</ProductName>
+    <PublisherName>Delta Automation</PublisherName>
+    <SuiteName>Automation Simple Cassette</SuiteName>
+    <OpenBrowserOnPublish>false</OpenBrowserOnPublish>
+    <ApplicationRevision>24070</ApplicationRevision>
+    <ApplicationVersion>1.3.5329.%2a</ApplicationVersion>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <CreateDesktopShortcut>true</CreateDesktopShortcut>
+    <PublishWizardCompleted>true</PublishWizardCompleted>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <PlatformTarget>x86</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <DefineDebug>true</DefineDebug>
+    <DefineTrace>true</DefineTrace>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DocumentationFile>Foundations.xml</DocumentationFile>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</NoWarn>
+    <DefineConstants>TESTING=0</DefineConstants>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <PlatformTarget>x86</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <DefineDebug>false</DefineDebug>
+    <DefineTrace>true</DefineTrace>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DocumentationFile>Foundations.xml</DocumentationFile>
+    <NoWarn>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</NoWarn>
+    <WarningsAsErrors>
+    </WarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OptionExplicit>On</OptionExplicit>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OptionCompare>Binary</OptionCompare>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OptionStrict>Off</OptionStrict>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OptionInfer>On</OptionInfer>
+  </PropertyGroup>
+  <PropertyGroup />
+  <PropertyGroup>
+    <ManifestCertificateThumbprint>C467D6FCEFE0919E26E9FB48667A4A6266C550E8</ManifestCertificateThumbprint>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ManifestKeyFile>ASC-03-137_TemporaryKey.pfx</ManifestKeyFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GenerateManifests>true</GenerateManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignManifests>false</SignManifests>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>
+    </ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>false</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyOriginatorKeyFile>
+    </AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="MxComLib, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>.\MxComLib.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Deployment" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup>
+    <Import Include="Microsoft.VisualBasic" />
+    <Import Include="System" />
+    <Import Include="System.Collections" />
+    <Import Include="System.Collections.Generic" />
+    <Import Include="System.Drawing" />
+    <Import Include="System.Diagnostics" />
+    <Import Include="System.Windows.Forms" />
+    <Import Include="System.Linq" />
+    <Import Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Assembly Model\assemblyArch.vb" />
+    <Compile Include="Assembly Model\internalEnum.vb" />
+    <Compile Include="Assembly Model\statusEnum.vb" />
+    <Compile Include="Assembly Model\userControlAliveBar.Designer.vb">
+      <DependentUpon>userControlAliveBar.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Assembly Model\userControlAliveBar.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Layer\AMONet.vb" />
+    <Compile Include="Base Layer\LoginForm.designer.vb">
+      <DependentUpon>LoginForm.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\LoginForm.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Base Layer\mdlAMOCodes.vb" />
+    <Compile Include="Base Layer\moduleAmax.vb" />
+    <Compile Include="Base Layer\moduleMelsec.vb" />
+    <Compile Include="Base Layer\moduleVirtual.vb" />
+    <Compile Include="Base Layer\userControlDMTSlave.Designer.vb">
+      <DependentUpon>userControlDMTSlave.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\userControlDMTSlave.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Layer\UserControlIOTable.Designer.vb">
+      <DependentUpon>UserControlIOTable.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\UserControlIOTable.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Layer\moduleDMT.vb" />
+    <Compile Include="Base Layer\moduleMemoryPool.vb" />
+    <Compile Include="Base Layer\userControlHardwareNode.Designer.vb">
+      <DependentUpon>userControlHardwareNode.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\userControlHardwareNode.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Layer\userControlMelsec.Designer.vb">
+      <DependentUpon>userControlMelsec.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\userControlMelsec.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Layer\userControlPhysicalHardwares.Designer.vb">
+      <DependentUpon>userControlPhysicalHardwares.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\userControlPhysicalHardwares.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\userControlAlarmPop.Designer.vb">
+      <DependentUpon>userControlAlarmPop.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlAlarmPop.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\compDcMotor.vb" />
+    <Compile Include="Components\compSocket.vb" />
+    <Compile Include="Components\userControlCylinderBase.Designer.vb">
+      <DependentUpon>userControlCylinderBase.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Components\userControlCylinderBase.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\userControlDrivable.Designer.vb">
+      <DependentUpon>userControlDrivable.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Components\userControlDrivable.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\userControlMessage.Designer.vb">
+      <DependentUpon>userControlMessage.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Components\userControlMessage.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\userControlMotor.Designer.vb">
+      <DependentUpon>userControlMotor.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Components\userControlMotor.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\userControlPropertyView.Designer.vb">
+      <DependentUpon>userControlPropertyView.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Components\userControlPropertyView.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Components\compAlarm.vb" />
+    <Compile Include="Components\compAlarmContent.vb" />
+    <Compile Include="Components\compCompound.vb" />
+    <Compile Include="Components\compDatabase.vb" />
+    <Compile Include="Components\compCylinder.vb" />
+    <Compile Include="Components\compMotor.vb" />
+    <Compile Include="Diversion\diversionSet1.vb" />
+    <Compile Include="Models\clsRobotCresboxHandshake.vb" />
+    <Compile Include="Models\communicationBase.vb" />
+    <Compile Include="Models\conveyorBatchOffset.vb" />
+    <Compile Include="Models\conveyorSeriesLoss.vb" />
+    <Compile Include="Models\conveyorSlowdownOffset.vb" />
+    <Compile Include="Models\conveyorTongue.vb" />
+    <Compile Include="Models\emptyCassetteLogistic.vb" />
+    <Compile Include="Models\headVirtualStation.vb" />
+    <Compile Include="Models\Interfaces.vb" />
+    <Compile Include="Models\listAsQueue.vb" />
+    <Compile Include="Models\inSerieDispatcher.vb" />
+    <Compile Include="Models\ngPicker.vb" />
+    <Compile Include="Models\PECVD_jk\clsConveyorCombineFilter.vb" />
+    <Compile Include="Models\PECVD_jk\clsConveyorLaneMaskV2.vb" />
+    <Compile Include="Models\PECVD_jk\clsConveyorLaneMask.vb" />
+    <Compile Include="Models\PECVD_jk\clsConveyorLifter.vb" />
+    <Compile Include="Models\PECVD_jk\clsFlipper.vb" />
+    <Compile Include="Models\PECVD_jk\clsBufferCassetteBridge.vb" />
+    <Compile Include="Models\PECVD_jk\clsLinearSwapArm.vb" />
+    <Compile Include="Models\PECVD_jk\clsLoadingBuffer.vb" />
+    <Compile Include="Models\PECVD_jk\clsLoadingBufferV2.vb" />
+    <Compile Include="Models\PECVD_jk\clsHookDecider.vb" />
+    <Compile Include="Models\PECVD_jk\clsLoadingPickerFilter.vb" />
+    <Compile Include="Models\PECVD_jk\clsLoadUnloadLinearSwapArm.vb" />
+    <Compile Include="Models\PECVD_jk\clsModuleActionSerializer.vb" />
+    <Compile Include="Models\PECVD_jk\clsRotate90.vb" />
+    <Compile Include="Models\PECVD_jk\clsSynchronizableTransporterPullTypeV2.vb" />
+    <Compile Include="Models\PECVD_jk\clsUnloadingPickerFilter.vb" />
+    <Compile Include="Models\PECVD_jk\clsUnloadingPickerFilterV2.vb" />
+    <Compile Include="Models\brokenCheck.vb" />
+    <Compile Include="Models\PECVD_jk\clsWeightStation.vb" />
+    <Compile Include="Models\PECVD_jk\IXYRTable.vb" />
+    <Compile Include="Models\PECVD_steven\cassetteSubSystemBase.vb" />
+    <Compile Include="Models\PECVD_steven\clsStackWaferLift.vb" />
+    <Compile Include="Models\PECVD_steven\clsStackWaferPick.vb" />
+    <Compile Include="Models\PECVD_steven\clsStackWaferPlace.vb" />
+    <Compile Include="Models\PECVD_steven\clsStackUnload.vb" />
+    <Compile Include="Models\PECVD_steven\clsStackLoad.vb" />
+    <Compile Include="Models\PECVD_steven\nonExtendCassetteFeed.vb" />
+    <Compile Include="Models\PECVD_steven\stackFlowSubSystemBase.vb" />
+    <Compile Include="Models\PECVD_steven\stackLane.vb" />
+    <Compile Include="Models\PECVD_steven\stackLaneSubSystemBase.vb" />
+    <Compile Include="Models\PECVD_steven\stackSubSystemBase.vb" />
+    <Compile Include="Models\PECVD_steven\userControlCassette.Designer.vb">
+      <DependentUpon>userControlCassette.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Models\PECVD_steven\userControlCassette.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Models\shiftModel.vb" />
+    <Compile Include="Models\clsDoubleCheck.vb" />
+    <Compile Include="Models\targetLaneStandard.vb" />
+    <Compile Include="Models\userControlElement.Designer.vb">
+      <DependentUpon>userControlElement.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Models\userControlElement.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Models\userControlLane.Designer.vb">
+      <DependentUpon>userControlLane.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Models\userControlLane.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Models\clampModule.vb" />
+    <Compile Include="Models\PECVD_jk\clsUnloadingBuffer.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteButton.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteFeed.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteLift.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteLoad.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteTransport.vb" />
+    <Compile Include="Models\PECVD_steven\clsCassetteUnload.vb" />
+    <Compile Include="Models\shiftData.vb" />
+    <Compile Include="Models\userControlListViewer.Designer.vb">
+      <DependentUpon>userControlListViewer.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Models\userControlListViewer.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Models\trayData.vb" />
+    <Compile Include="Base Layer\mdlXmlSaveLoad.vb" />
+    <Compile Include="Components\compMessage.vb" />
+    <Compile Include="Message Base\messageDataBase.vb" />
+    <Compile Include="Models\moduleModel.vb" />
+    <Compile Include="My Project\Resources.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Models\flagModels.vb" />
+    <Compile Include="Base Model\systemSetting.vb" />
+    <Compile Include="Base Model\userControlAlarm.Designer.vb">
+      <DependentUpon>userControlAlarm.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlAlarm.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\userControlComponent.Designer.vb">
+      <DependentUpon>userControlComponent.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlComponent.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\userControlFlagElement.Designer.vb">
+      <DependentUpon>userControlFlagElement.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlFlagElement.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\userControlFlags.Designer.vb">
+      <DependentUpon>userControlFlags.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlFlags.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\userControlSystem.Designer.vb">
+      <DependentUpon>userControlSystem.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Model\userControlSystem.vb">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Base Model\systemArch.vb" />
+    <Compile Include="My Project\AssemblyInfo.vb" />
+    <Compile Include="My Project\Application.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Application.myapp</DependentUpon>
+    </Compile>
+    <Compile Include="My Project\Settings.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+    </Compile>
+    <Compile Include="Base Layer\mdlAMONetFunction.vb" />
+    <Compile Include="Base Layer\mdlAMONetInit.vb" />
+    <Compile Include="Base Layer\mdlAMONetPosDefine.vb" />
+    <Compile Include="Resources.en-US.Designer.vb">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.en-US.resx</DependentUpon>
+    </Compile>
+    <Compile Include="Settings.vb" />
+    <Compile Include="Utilities\flagController.vb" />
+    <Compile Include="Utilities\formPassword.Designer.vb">
+      <DependentUpon>formPassword.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Utilities\formPassword.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Utilities\interceptObject.vb" />
+    <Compile Include="Utilities\MotorPointTypeEditor.vb" />
+    <Compile Include="Utilities\utilities.vb" />
+    <Compile Include="Base Layer\formSetting.designer.vb">
+      <DependentUpon>formSetting.vb</DependentUpon>
+    </Compile>
+    <Compile Include="Base Layer\formSetting.vb">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Components\compBasics.vb" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assembly Model\userControlAliveBar.resx">
+      <DependentUpon>userControlAliveBar.vb</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\formSetting.en.resx">
+      <DependentUpon>formSetting.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\LoginForm.resx">
+      <DependentUpon>LoginForm.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\userControlDMTSlave.resx">
+      <DependentUpon>userControlDMTSlave.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\UserControlIOTable.resx">
+      <DependentUpon>UserControlIOTable.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\userControlHardwareNode.resx">
+      <DependentUpon>userControlHardwareNode.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\userControlMelsec.resx">
+      <DependentUpon>userControlMelsec.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\userControlPhysicalHardwares.resx">
+      <DependentUpon>userControlPhysicalHardwares.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlAlarmPop.resx">
+      <DependentUpon>userControlAlarmPop.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Components\userControlCylinderBase.resx">
+      <DependentUpon>userControlCylinderBase.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Components\userControlDrivable.resx">
+      <DependentUpon>userControlDrivable.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Components\userControlMessage.resx">
+      <DependentUpon>userControlMessage.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Components\userControlMotor.resx">
+      <DependentUpon>userControlMotor.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Components\userControlPropertyView.resx">
+      <DependentUpon>userControlPropertyView.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlAlarm.resx">
+      <DependentUpon>userControlAlarm.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlAlarm.zh-Hant.resx">
+      <DependentUpon>userControlAlarm.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlComponent.resx">
+      <DependentUpon>userControlComponent.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlFlagElement.resx">
+      <DependentUpon>userControlFlagElement.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlFlags.resx">
+      <DependentUpon>userControlFlags.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Model\userControlSystem.resx">
+      <DependentUpon>userControlSystem.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\PECVD_steven\userControlCassette.en.resx">
+      <DependentUpon>userControlCassette.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\PECVD_steven\userControlCassette.resx">
+      <DependentUpon>userControlCassette.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\userControlElement.resx">
+      <DependentUpon>userControlElement.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\userControlLane.resx">
+      <DependentUpon>userControlLane.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Models\userControlListViewer.resx">
+      <DependentUpon>userControlListViewer.vb</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="My Project\Resources.resx">
+      <Generator>PublicVbMyResourcesResXFileCodeGenerator</Generator>
+      <CustomToolNamespace>My.Resources</CustomToolNamespace>
+      <SubType>Designer</SubType>
+      <LastGenOutput>Resources.Designer.vb</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Base Layer\formSetting.resx">
+      <DependentUpon>formSetting.vb</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources.en-US.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.en-US.Designer.vb</LastGenOutput>
+      <CustomToolNamespace>My.Resources</CustomToolNamespace>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Utilities\formPassword.resx">
+      <DependentUpon>formPassword.vb</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="My Project\Application.myapp">
+      <Generator>MyApplicationCodeGenerator</Generator>
+      <LastGenOutput>Application.Designer.vb</LastGenOutput>
+      <SubType>Designer</SubType>
+    </None>
+    <None Include="My Project\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <CustomToolNamespace>My</CustomToolNamespace>
+      <LastGenOutput>Settings.Designer.vb</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include=".NETFramework,Version=v4.0,Profile=Client">
+      <Visible>False</Visible>
+      <ProductName>Microsoft .NET Framework 4 Client Profile %28x86 和 x64%29</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Windows.Installer.4.5">
+      <Visible>False</Visible>
+      <ProductName>Windows Installer 4.5</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <PublishFile Include="ASC-03-137.pdb">
+      <Visible>False</Visible>
+      <Group>
+      </Group>
+      <TargetPath>
+      </TargetPath>
+      <PublishState>Include</PublishState>
+      <IncludeHash>True</IncludeHash>
+      <FileType>File</FileType>
+    </PublishFile>
+    <PublishFile Include="ASC-03-137.xml">
+      <Visible>False</Visible>
+      <Group>
+      </Group>
+      <TargetPath>
+      </TargetPath>
+      <PublishState>Include</PublishState>
+      <IncludeHash>True</IncludeHash>
+      <FileType>File</FileType>
+    </PublishFile>
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{94E38DFF-614B-4CBD-B67C-F211BB35CE8B}" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Resources\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="DMT.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="MxComLib.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <COMReference Include="IWshRuntimeLibrary">
+      <Guid>{F935DC20-1CF0-11D0-ADB9-00C04FD58A0B}</Guid>
+      <VersionMajor>1</VersionMajor>
+      <VersionMinor>0</VersionMinor>
+      <Lcid>0</Lcid>
+      <WrapperTool>tlbimp</WrapperTool>
+      <Isolated>False</Isolated>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+    </COMReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

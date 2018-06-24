@@ -1,0 +1,352 @@
+﻿Imports System.Collections.Generic
+Imports System.IO
+Imports System.Xml.Serialization
+
+Enum BtnFunc
+    OP_Add = 1
+    OP_Del = 2
+    OP_Update = 3
+    OP_Comfirm = 4
+    OP_Cancel = 5
+    OP_Save = 6
+    OP_Show = 7
+End Enum
+Public Enum UserLevel
+    None = 0
+    Opt = 1
+    Engineer = 2
+    Admin = 3
+    Service = 4
+End Enum
+
+Public Class pwData
+    Public sintLevel As Short
+    Public strAccount As String
+    Public strPassword As String
+End Class
+
+Public Class cPasswordData
+    Public Shared MaxPasswordNum As Integer = 20
+    Public pwInfo(MaxPasswordNum) As pwData
+    Public Sub New()
+        Dim i As Integer
+        For i = 0 To MaxPasswordNum - 1
+            pwInfo(i) = New pwData
+        Next
+        Call ResetPasswordData()
+    End Sub
+    Public Sub ResetPasswordData()
+        For i = 0 To MaxPasswordNum - 1
+            pwInfo(i) = New pwData
+            pwInfo(i).sintLevel = UserLevel.None
+            pwInfo(i).strAccount = ""
+            pwInfo(i).strPassword = ""
+        Next
+    End Sub
+End Class
+
+Public Class PasswordProcess
+    Public Shared UserDefine() As String = {"None", "Operator", "Engineer", "Admin", "Developer"}
+    Public PasswordData As New cPasswordData
+    Public Event ChangeUsedItemForAccount(ByVal levelIndex As Short, ByVal msg As String)
+    Dim _Level As String
+    Dim _Account As String
+    Dim _Password As String
+    Public Property Level() As String
+        Get
+            Return _Level
+        End Get
+        Set(ByVal value As String)
+            _Level = value
+        End Set
+    End Property
+    Public Property Account() As String
+        Get
+            Return _Account
+        End Get
+        Set(ByVal value As String)
+            _Account = value
+        End Set
+    End Property
+    Public Property Password() As String
+        Get
+            Return _Password
+        End Get
+        Set(ByVal value As String)
+            _Password = value
+        End Set
+    End Property
+
+    Public Sub DataGridOp(ByVal dgvObject As DataGridView, ByVal cboObject As ComboBox, ByVal OpIndex As Integer)
+        On Error GoTo PROC_ERR
+
+        Dim i As Short
+        Dim RowIndex As Integer
+        Dim intRowCnt As Integer
+        Dim intColumnCnt As Integer
+        Dim clickedCell As DataGridViewCell
+        Dim CellContent() As String
+        Dim strFileName As String
+
+        Select Case OpIndex
+            Case BtnFunc.OP_Add
+                dgvObject.Rows.Add(_Level, _Account, PasswordEncoder(Trim(_Password)))
+
+            Case BtnFunc.OP_Del
+                RowIndex = dgvObject.CurrentRow.Index
+                intRowCnt = dgvObject.RowCount
+                If intRowCnt <= 1 Then GoTo PROC_EXIT
+                If intRowCnt = RowIndex + 1 Then GoTo PROC_EXIT
+
+                dgvObject.Rows.RemoveAt(RowIndex)
+
+            Case BtnFunc.OP_Update
+                intRowCnt = dgvObject.RowCount
+                RowIndex = dgvObject.CurrentRow.Index
+                If intRowCnt = RowIndex + 1 Then GoTo PROC_EXIT
+
+                dgvObject.Rows(RowIndex).Cells(0).Value = _Level
+                dgvObject.Rows(RowIndex).Cells(1).Value = _Account
+                dgvObject.Rows(RowIndex).Cells(2).Value = PasswordEncoder(Trim(_Password))
+
+            Case BtnFunc.OP_Comfirm
+                Call CheckAccountPassword(Array.IndexOf(UserDefine, _Level), _Account, _Password)
+
+            Case BtnFunc.OP_Cancel
+                RaiseEvent ChangeUsedItemForAccount(UserLevel.None, "")
+
+            Case BtnFunc.OP_Save
+                Call PasswordDataSave(dgvObject)
+                Call SaveXmlFile(PasswordData, "Password.xml")
+                cboObject.Items.Clear()
+                For i = 1 To 4
+                    cboObject.Items.Add(UserDefine(i))
+                Next
+
+            Case BtnFunc.OP_Show
+                Dim strValue(2) As String
+                intRowCnt = dgvObject.RowCount
+                If intRowCnt <= 1 Then GoTo PROC_EXIT
+
+                RowIndex = dgvObject.CurrentRow.Index
+                If intRowCnt = RowIndex + 1 Then GoTo PROC_EXIT
+
+                intColumnCnt = dgvObject.ColumnCount
+
+                ReDim CellContent(intColumnCnt - 1)
+                For i = 0 To intColumnCnt - 1
+                    clickedCell = dgvObject.Rows(RowIndex).Cells(i)
+                    CellContent(i) = clickedCell.Value
+                Next
+                _Level = CellContent(0)
+                _Account = CellContent(1)
+                _Password = PasswordDecoder(CellContent(2))
+
+        End Select
+PROC_EXIT:
+        Exit Sub
+PROC_ERR:
+        MessageBox.Show("DataGridOp" & vbCrLf & "Number=" & Err.Number & vbCrLf & "Description =" & Err.Description)
+
+        GoTo PROC_EXIT
+    End Sub
+    Private Sub CheckAccountPassword(ByVal sintLvl As Short, ByVal strAcct As String, ByVal strPwd As String)
+        Dim i As Short
+        Dim blnExist(3) As Boolean
+
+        For i = 0 To 2
+            blnExist(i) = False
+        Next
+
+        With PasswordData
+            If sintLvl = UserLevel.Service Then
+                blnExist(0) = True
+                If strAcct = "Delta" Then
+                    blnExist(1) = True
+                    If strPwd = "034526107" Then
+                        blnExist(2) = True
+                    End If
+                End If
+            Else
+                For i = 0 To cPasswordData.MaxPasswordNum - 1
+                    If .pwInfo(i).sintLevel = sintLvl Then '檢查資料是否存在
+                        blnExist(0) = True
+                        If PasswordDecoder(.pwInfo(i).strAccount) = strAcct Then
+                            blnExist(1) = True
+                            If PasswordDecoder(.pwInfo(i).strPassword) = Trim(strPwd) Then
+                                blnExist(2) = True
+                            End If
+                        End If
+                    End If
+                Next
+            End If
+
+            If blnExist(2) Then '<權限><帳號><密碼>完全符合
+                RaiseEvent ChangeUsedItemForAccount(sintLvl, "Correct!")
+            ElseIf Not blnExist(0) Then
+                RaiseEvent ChangeUsedItemForAccount(UserLevel.None, "Incorrect Authority!")
+            ElseIf Not blnExist(1) Then
+                RaiseEvent ChangeUsedItemForAccount(UserLevel.None, "Incorrect Account!")
+            ElseIf Not blnExist(3) Then
+                RaiseEvent ChangeUsedItemForAccount(UserLevel.None, "Incorrect Passowrd!")
+            End If
+
+        End With
+    End Sub
+
+    Public Sub PasswordDataSave(ByVal dgvObject As DataGridView)
+        On Error GoTo PROC_ERR
+        Dim i As Integer, j As Integer, k As Integer
+        Dim intRowCnt As Integer
+        Dim intColumnCnt As Integer
+        Dim clickedCell As DataGridViewCell
+        Dim colString() As String
+        '清除密碼變數
+        PasswordData.ResetPasswordData()
+        '檢查列數
+        intRowCnt = dgvObject.RowCount
+        If intRowCnt <= 1 Then Exit Sub
+        '檢查行數
+        intColumnCnt = dgvObject.ColumnCount
+        ReDim colString(dgvObject.ColumnCount - 1)
+
+        For i = 0 To intRowCnt - 2
+            For k = 0 To intColumnCnt - 1
+                colString(k) = ""
+            Next
+            For j = 0 To intColumnCnt - 1 '此軸的點位個數
+                clickedCell = dgvObject.Rows(i).Cells(j)
+                colString(j) = clickedCell.Value
+            Next j
+
+            PasswordData.pwInfo(i).sintLevel = Array.IndexOf(UserDefine, colString(0))
+            PasswordData.pwInfo(i).strAccount = PasswordEncoder(colString(1))
+            PasswordData.pwInfo(i).strPassword = colString(2)
+        Next i
+PROC_EXIT:
+        Exit Sub
+PROC_ERR:
+        MessageBox.Show("PasswordDataSave" & vbCrLf & "Number=" & Err.Number & vbCrLf & "Description =" & Err.Description)
+        GoTo PROC_EXIT
+    End Sub
+    Public Function PasswordDecoder(ByVal strString As String) As String
+        On Error GoTo PROC_ERR
+        Dim strWord As String
+        Dim strBuffer As String
+        Dim i As Integer
+        strBuffer = ""
+        For i = 1 To Len(strString) Step 3
+            strWord = Mid(strString, i, 3)
+            strBuffer = strBuffer & Chr(CLng(strWord))
+        Next
+        strBuffer = Mid(strBuffer, 4, Len(strBuffer) - 3)
+        strBuffer = Mid(strBuffer, 1, Len(strBuffer) - 3)
+        PasswordDecoder = strBuffer
+        Exit Function
+
+PROC_EXIT:
+        Exit Function
+PROC_ERR:
+        MessageBox.Show("PasswordDecoder" & vbCrLf & "Number=" & Err.Number & vbCrLf & "Description =" & Err.Description)
+        PasswordDecoder = ""
+        GoTo PROC_EXIT
+    End Function
+
+    Public Function PasswordEncoder(ByVal strString As String) As String
+        On Error GoTo PROC_ERR
+        Dim strPassword As String
+        Dim strWord As String
+        Dim strBuffer As String
+        Dim i As Integer
+        strPassword = ArbitraryLengthStringGenerate(3) & strString & ArbitraryLengthStringGenerate(3)
+        strBuffer = ""
+        For i = 1 To Len(strPassword)
+            strWord = Mid(strPassword, i, 1)
+            strBuffer = strBuffer & Format(Asc(strWord), "000")
+        Next
+        PasswordEncoder = strBuffer
+
+PROC_EXIT:
+        Exit Function
+PROC_ERR:
+        MessageBox.Show("PasswordEncoder" & vbCrLf & "Number=" & Err.Number & vbCrLf & "Description =" & Err.Description)
+        GoTo PROC_EXIT
+    End Function
+    Public Function ArbitraryLengthStringGenerate(ByVal StringLength As Integer) As String
+        On Error GoTo PROC_ERR
+        Randomize()
+        '65-A  90-Z
+        '97-a 122-z
+        Dim dblLimitValue As Double
+        Dim blnChange As Boolean
+        Dim strMark As String
+        Dim i As Integer
+        dblLimitValue = 0
+        blnChange = False
+        strMark = ""
+        For i = 0 To StringLength - 1
+            If blnChange = False Then
+                strMark = strMark & Chr(65 + 25 * Rnd())
+                dblLimitValue = dblLimitValue + 25 * Rnd()
+                If dblLimitValue >= 12 Then
+                    blnChange = True
+                    dblLimitValue = 0
+                End If
+            ElseIf blnChange = True Then
+                strMark = strMark & Chr(97 + 25 * Rnd())
+                dblLimitValue = dblLimitValue + 25 * Rnd()
+                If dblLimitValue >= 12 Then
+                    blnChange = False
+                    dblLimitValue = 0
+                End If
+            End If
+        Next
+        ArbitraryLengthStringGenerate = strMark
+
+PROC_EXIT:
+        Exit Function
+PROC_ERR:
+        MessageBox.Show("ArbitraryLengthStringGenerate" & vbCrLf & "Number=" & Err.Number & vbCrLf & "Description =" & Err.Description)
+        GoTo PROC_EXIT
+    End Function
+    Public Sub SaveXmlFile(ByRef obj As Object, ByVal strFileName As String)
+        'Serialize object to a text file.
+        Try
+
+            If Dir(My.Application.Info.DirectoryPath & "\Data", vbDirectory) = "" Then
+                MkDir(My.Application.Info.DirectoryPath & "\Data")
+            End If
+
+            Dim objStreamWriter As New StreamWriter(My.Application.Info.DirectoryPath & "\Data\" & strFileName)
+            Dim x As New XmlSerializer(obj.GetType)
+            x.Serialize(objStreamWriter, obj)
+            objStreamWriter.Close()
+        Catch ex As Exception
+            MsgBox("SaveXmlFile Error!" & vbCrLf & ex.Message)
+        End Try
+
+    End Sub
+    Public Function OpenXmlFile(ByVal strFileName As String) As Object
+        'Deserialize text file to a new object.
+        Try
+            Dim objStreamReader As New StreamReader(My.Application.Info.DirectoryPath & "\Data\" & strFileName)
+            Dim x As New XmlSerializer(GetType(cPasswordData))
+            OpenXmlFile = x.Deserialize(objStreamReader)
+            objStreamReader.Close()
+            'XmlDeserialFile = True
+        Catch ex As Exception
+            '判斷錯誤取回的型別
+            If ex.GetType Is GetType(System.IO.DirectoryNotFoundException) Then 'err.number=76, 找不到檔案或目錄的一部分時所擲回的例外狀況。
+                MkDir(My.Application.Info.DirectoryPath & "\Data\")
+            End If
+            MsgBox("OpenXmlFile Error!" & vbCrLf & _
+                   "FileName=" & strFileName & vbCrLf & _
+                   "Error Number=" & Err.Number & vbCrLf &
+                   "Error Type=" & ex.GetType.ToString & vbCrLf & _
+                   ex.Message)
+            Return New cPasswordData
+        End Try
+    End Function
+End Class
+
+

@@ -1,0 +1,31 @@
+﻿''' <summary>
+''' Viewing only , no way to edit
+''' </summary>
+''' <remarks></remarks>
+Public Class userControlListViewer
+
+    WriteOnly Property CollectionReference As ListAsQueue(Of shiftDataPackBase)
+        Set(value As ListAsQueue(Of shiftDataPackBase))
+            __collectionReference = value
+            binding.DataSource = __collectionReference
+            TimerScan.Enabled = True
+        End Set
+    End Property
+
+    Dim binding As BindingSource = New BindingSource
+    Dim WithEvents __collectionReference As ListAsQueue(Of shiftDataPackBase) = Nothing
+
+
+    Sub collectionChanged() Handles __collectionReference.CollectionChanged
+        LabelCount.Text = __collectionReference.Count
+        binding.ResetItem(True)
+    End Sub
+
+    Private Sub timerScanTick(sender As Object, e As EventArgs) Handles TimerScan.Tick
+        With DataGridViewList
+            .Update()
+            .Refresh()
+        End With
+    End Sub
+
+End Class

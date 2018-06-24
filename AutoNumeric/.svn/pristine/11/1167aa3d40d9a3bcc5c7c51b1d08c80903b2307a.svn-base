@@ -1,0 +1,294 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+Imports MathNet.Numerics.LinearAlgebra.Factorization
+Imports MathNet.Spatial.Euclidean
+
+
+Public Class fittingMethods
+
+    Public Enum variableDefinition As Integer
+        INDEPENDENT = 0
+        DEPENDENT = 1
+    End Enum
+    Public Enum coeffsDefinition As Integer
+        A = 0
+        B = 1
+        C = 2
+        D = 3
+        E = 4
+        F = 5
+    End Enum
+
+    Public Enum fitting2DMethodsEnum As Integer
+        ''' <summary>
+        ''' y = ax+b
+        ''' </summary>
+        ''' <remarks></remarks>
+        LINE = 1
+        ''' <summary>
+        ''' y = ax^2+ bx + c
+        ''' </summary>
+        ''' <remarks></remarks>
+        PARABOLIC = 2
+    End Enum
+
+
+    Shared Function data2DFitting(datas As List(Of Vector(Of Double)), method As fitting2DMethodsEnum) As Vector(Of Double)
+
+        'cascading data set 
+        Dim lhs As Matrix(Of Double) = CreateMatrix.Dense(Of Double)(1, 1) ' 1row1column
+        Dim independencies As Matrix(Of Double) = CreateMatrix.Dense(Of Double)(1, method + 1) 'need N+1 column
+
+        Dim dependent As Double = 0
+        Dim independent As Double = 0
+
+        Dim coeffRow As Vector(Of Double) = CreateVector.Dense(Of Double)(method + 1, 1) 'all initialized as 1
+
+        For Each item As Vector(Of Double) In datas
+            dependent = item(variableDefinition.DEPENDENT)
+            independent = item(variableDefinition.INDEPENDENT)
+
+            'fill the coefficients
+            For index = 0 To method
+                coeffRow(index) = Math.Pow(independent, method - index)
+            Next
+
+            With item
+                lhs = lhs.Stack(CreateMatrix.DenseOfRowArrays(Of Double)({dependent}))
+                independencies = independencies.Stack(coeffRow.ToRowMatrix)
+            End With
+        Next
+
+        lhs.RemoveRow(0)
+        independencies.RemoveRow(0)
+
+        Return independencies.PseudoInverse() * CreateVector.Dense(Of Double)(lhs.ToColumnMajorArray)
+
+    End Function
+
+    ''' <summary>
+    ''' y = ax^2 + bx + c
+    ''' maximum x , 2ax+b = 0 , so x =-b/2a
+    ''' </summary>
+    ''' <param name="coeffs">3x1 vector</param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function parabolicMaximum(coeffs As Vector(Of Double)) As Double
+        Return -coeffs(1) / (2 * coeffs(0))
+    End Function
+    ''' <summary>
+    ''' Form : ax^2 + bx + c = y
+    ''' </summary>
+    ''' <param name="y"></param>
+    ''' <param name="profile"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function parabolicSolver(y As Double, profile As Vector(Of Double)) As Vector(Of Double)
+        Dim discriminant As Double = profile(coeffsDefinition.B) ^ 2 -
+            4 * profile(coeffsDefinition.A) * (profile(coeffsDefinition.C) - y)
+
+        'no real solve
+        If discriminant < 0 Then
+            Return Nothing
+        End If
+
+        Return CreateVector.Dense(Of Double)({-profile(coeffsDefinition.B) + Math.Sqrt(discriminant),
+                                              -profile(coeffsDefinition.B) - Math.Sqrt(discriminant)}) /
+                                      (2 * profile(coeffsDefinition.A))
+    End Function
+
+
+    Shared Function solveRightSingularVector(__matrix As Matrix(Of Double)) As Vector(Of Double)
+        Dim __svdResult As Svd(Of Double) = __matrix.Svd()
+        'find smallest singular value
+        Return __svdResult.VT.Transpose.Column((__svdResult.S.AbsoluteMinimumIndex()))
+    End Function
+
+    Enum fitting3DMethodsEnum As Integer
+        PLANE = 4
+        DOUBLE_PARABOLA = 6
+    End Enum
+
+
+    ''' <summary>
+    ''' input : 3x1 vector
+    ''' so far fitting the plane
+    ''' ax+by+cz+d = 0
+    ''' ax^2 + bx + cy^2 + dy + ez + f = 0
+    ''' </summary>
+    ''' <param name="point3DCloud"></param>
+    ''' <returns>the surface coefficient</returns>
+    ''' <remarks></remarks>
+    Shared Function data3DFitting(point3DCloud As List(Of Vector(Of Double)),
+                                  Optional mode As fitting3DMethodsEnum = fitting3DMethodsEnum.PLANE) As Vector(Of Double)
+
+        Dim coeff As Matrix(Of Double) = CreateMatrix.Dense(Of Double)(1, mode)
+        Dim eachPoint As Vector(Of Double) = CreateVector.Dense(Of Double)(mode)
+
+        'stack these vectors
+        For Each item As Vector(Of Double) In point3DCloud
+
+            Select Case mode
+                Case fitting3DMethodsEnum.PLANE
+                    eachPoint.SetSubVector(0, item.Count, item)
+                Case fitting3DMethodsEnum.DOUBLE_PARABOLA
+                    eachPoint.SetValues({item.First ^ 2,
+                                         item.First,
+                                         item(1) ^ 2,
+                                         item(1),
+                                         item.Last,
+                                         1})
+            End Select
+
+            coeff = coeff.Stack(eachPoint.ToRowMatrix)
+        Next
+        coeff.RemoveRow(0)
+
+        Return solveRightSingularVector(coeff).Normalize(2)
+    End Function
+
+
+    Public Shared Function data3D(x As Double, y As Double, profile As Vector(Of Double), Optional mode As fitting3DMethodsEnum = fitting3DMethodsEnum.PLANE) As Double
+
+        Select Case mode
+            Case fitting3DMethodsEnum.PLANE
+
+            Case fitting3DMethodsEnum.DOUBLE_PARABOLA
+                'z = (ax^2 + bx + cy^2 + dy  + f)/-e
+                Return (profile(coeffsDefinition.A) * (x ^ 2) +
+                    profile(coeffsDefinition.B) * x +
+                    profile(coeffsDefinition.C) * (y ^ 2) +
+                    profile(coeffsDefinition.D) * y +
+                    profile(coeffsDefinition.F)) / (-profile(coeffsDefinition.E))
+            Case Else
+                Return 0
+        End Select
+
+    End Function
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="point3DCloud"></param>
+    ''' <returns>3x1 point</returns>
+    ''' <remarks></remarks>
+    Shared Function cloudCenter(point3DCloud As List(Of Vector(Of Double))) As Vector(Of Double)
+
+        Dim __accumulatedVector As Vector(Of Double) = CreateVector.Dense(Of Double)({0,
+                                                                                      0,
+                                                                                      0})
+
+        For Each item As Vector(Of Double) In point3DCloud
+            __accumulatedVector += item.SubVector(0, 3)
+        Next
+
+        Return __accumulatedVector / point3DCloud.Count
+
+    End Function
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="point3DCloud"></param>
+    ''' <returns>4x4 homogenous matrix</returns>
+    ''' <remarks></remarks>
+    Shared Function coordinateFind(point3DCloud As List(Of Vector(Of Double))) As Matrix(Of Double)
+        '1. find normal vector (Z-axis)
+        '2. calculate origin (temp use)
+        '3. use first point-origin vector as Y-axis(temp use)
+        '4. cross out the X-axis
+        '5. X-Z cross out Y-axis
+
+        Dim zAxis As Vector(Of Double) = data3DFitting(point3DCloud).SubVector(0, 3).Normalize(2)
+        Dim __origin As Vector(Of Double) = cloudCenter(point3DCloud)
+        Dim tempYAxis As Vector(Of Double) = point3DCloud.First.SubVector(0, __origin.Count) - __origin
+
+        'cross out x-axis
+        Dim xAxis As Vector(Of Double) = Vector3D.OfVector(tempYAxis).CrossProduct(Vector3D.OfVector(zAxis)).ToVector
+        Dim yAxis As Vector(Of Double) = Vector3D.OfVector(xAxis).CrossProduct(Vector3D.OfVector(zAxis)).ToVector
+
+        Dim output As Matrix(Of Double) = CreateMatrix.DenseOfColumnVectors(Of Double)(xAxis,
+                                                                                       yAxis,
+                                                                                       zAxis,
+                                                                                       __origin)
+        'cascade homogenous vector
+        Return output.Stack(CreateMatrix.DenseOfRowArrays(Of Double)({0, 0, 0, 1}))
+    End Function
+
+    ''' <summary>
+    ''' Planar line : y=ax+b , -b = ax -y
+    ''' Planar line intersection : y=a1x+b1,y=a2x+b2
+    ''' </summary>
+    ''' <param name="line1Cloud"></param>
+    ''' <param name="line2Cloud"></param>
+    ''' <returns>3x1 position vector in Reference frame</returns>
+    ''' <remarks></remarks>
+    Shared Function line3DIntersection(line1Cloud As List(Of Vector(Of Double)),
+                                       line2Cloud As List(Of Vector(Of Double))) As Vector(Of Double)
+        '1. merge two cloud and find-out it local coordinate system
+        '2. transform these point to local coordinate 
+        '3. take the X,Y part only
+        '5. do line1 ,a,b coefficient fitting
+        '6. do line2 ,a,b coefficient fitting
+
+        Dim mergedCloud As List(Of Vector(Of Double)) = New List(Of Vector(Of Double))
+        mergedCloud.AddRange(line1Cloud)
+        mergedCloud.AddRange(line2Cloud)
+
+        Dim localCoordinate As htmEdgeElementary = New htmEdgeElementary(coordinateFind(mergedCloud),
+                                                                        coordinateEnums.LOCAL,
+                                                                        coordinateEnums.REFERENCE)
+
+        Dim line1CloudInLocal As List(Of Vector(Of Double)) = New List(Of Vector(Of Double))
+        Dim line2CloudInLocal As List(Of Vector(Of Double)) = New List(Of Vector(Of Double))
+
+        '------------------------------
+        'turns into representation of R
+        'and only take X,Y
+        '------------------------------
+        For Each item As Vector(Of Double) In line1Cloud
+            line1CloudInLocal.Add((localCoordinate.Inverse * (New PositionVector(item, coordinateEnums.LOCAL))).RawValue.SubVector(0, 2))
+        Next
+        For Each item As Vector(Of Double) In line2Cloud
+            line2CloudInLocal.Add((localCoordinate.Inverse * (New PositionVector(item, coordinateEnums.LOCAL))).RawValue.SubVector(0, 2))
+        Next
+
+        Dim line1 As Vector(Of Double) = data2DFitting(line1CloudInLocal, fitting2DMethodsEnum.LINE)
+        Dim line2 As Vector(Of Double) = data2DFitting(line2CloudInLocal, fitting2DMethodsEnum.LINE)
+
+        '---------------
+        '   Equations solver
+        '---------------
+        Dim intersectionInLocal As Vector(Of Double) = line2DIntersection(line1, line2)
+
+        Return (localCoordinate * New PositionVector(intersectionInLocal, coordinateEnums.LOCAL)).RawValue
+    End Function
+
+    Enum coordinateEnums
+        LOCAL
+        REFERENCE
+    End Enum
+
+    ''' <summary>
+    ''' y= ax + b
+    ''' </summary>
+    ''' <param name="line1"></param>
+    ''' <param name="line2"></param>
+    ''' <returns> 2x1 intersection coordinate </returns>
+    ''' <remarks></remarks>
+    Shared Function line2DIntersection(line1 As Vector(Of Double), line2 As Vector(Of Double)) As Vector(Of Double)
+        '---------------
+        '   Equations solver
+        '---------------
+        '-------------------
+        ' | -b1 | =   | a1 -1 | x
+        ' | -b2 | =   | a2 -1 | y
+        '-------------------
+        Dim coeffMatrix As Matrix(Of Double) = CreateMatrix.DenseOfRowArrays(Of Double)({line1.First, -1},
+                                                                                        {line2.First, -1})
+        Dim __v As Vector(Of Double) = CreateVector.DenseOfArray(Of Double)({-line1.Last,
+                                                                             -line2.Last})
+        Return coeffMatrix.Inverse * __v
+
+    End Function
+
+End Class

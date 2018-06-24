@@ -1,0 +1,44 @@
+﻿Imports Microsoft.VisualBasic
+
+Public Enum itemsDefinition As Byte
+    CHOKE_CENTER
+    C3_ORIGIN
+
+    ''' <summary>
+    ''' The center of calibration-use hole for DM
+    ''' </summary>
+    ''' <remarks></remarks>
+    HOLE1_CENTER
+    HOLE2_CENTER
+    HOLE3_CENTER
+    HOLE4_CENTER
+    HOLE5_CENTER
+    HOLE6_CENTER
+
+    ''' <summary>
+    ''' The start position of the choke-cutting path
+    ''' </summary>
+    ''' <remarks></remarks>
+    L_CHOKE_CUT_START
+
+    ''' <summary>
+    ''' Left-down pad
+    ''' </summary>
+    ''' <remarks></remarks>
+    DIE_PAD1
+    DIE_PAD2
+    DIE_PAD3
+    DIE_PAD4
+    ''' <summary>
+    ''' Dry alignment position
+    ''' </summary>
+    ''' <remarks></remarks>
+    DIE_FA_1
+    ''' <summary>
+    ''' Final bonding position
+    ''' </summary>
+    ''' <remarks></remarks>
+    DIE_FA_2
+
+End Enum
+

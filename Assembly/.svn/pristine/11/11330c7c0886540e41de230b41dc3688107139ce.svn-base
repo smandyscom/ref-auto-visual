@@ -1,0 +1,220 @@
+﻿Imports AutoNumeric
+Imports Cognex.VisionPro.ToolBlock
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class lpcFeatureMeasure
+
+    Public Event CameraProcessTriggered(ByVal sender As Object, ByVal e As EventArgs)
+
+    Dim WithEvents triggerHandle As imageProcessTriggerEventArgs = Nothing
+    Dim WithEvents doneHanle As imageProcessEndEventArgs = Nothing
+
+    Public readyPosition As itemsDefinition = itemsDefinition.CHOKE_CENTER
+    Public cameraFrame As framesDefinition = framesDefinition.C1REAL
+    Public featureCenter As itemsDefinition = itemsDefinition.LPC_F1
+
+    Public features As Dictionary(Of itemsDefinition, CogToolBlock) = New Dictionary(Of itemsDefinition, CogToolBlock)
+    Dim currentFeature As Dictionary(Of itemsDefinition, CogToolBlock).Enumerator = Nothing
+
+    Dim __outputList As List(Of measuredDataPair) = New List(Of measuredDataPair)
+
+    Dim dimensionSelection As Dictionary(Of framesDefinition, Integer) = New Dictionary(Of framesDefinition, Integer)
+
+    Function procedure(state As Integer) As Boolean
+        With frames.Instance
+            Select Case state
+                Case 0
+                    'TODO , load cog tool
+
+                    'move to ready position
+                    .CurrentRItem = readyPosition
+                    state += 10
+                Case 10
+                    'align the feature center
+                    If Assembly.Instance.IsAllAxesSettled Then
+                        Dim currentTransformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                                   cameraFrame)
+                        currentTransformation.PositionVector = (currentTransformation * .objectsDictionary(featureCenter)).RawValue
+                        .solveS(currentTransformation, frames.manipulationOptionsEnum.POSITION_ONLY)
+                        state += 10
+                    Else
+
+                    End If
+                Case 20
+                    If Assembly.Instance.CommandEndStatus(controlUnitsEnum.S) =
+                        Automation.IDrivable.endStatus.EXECUTION_END Then
+                        'initiating measuring procedure
+                        currentFeature = features.GetEnumerator
+                        currentFeature.MoveNext()
+
+                        state = 100
+                    Else
+                        '--------------
+                        '   Moving
+                        '--------------
+                    End If
+                    '-------------------------------------------------------
+                    '   Image Processing
+                    '-------------------------------------------------------
+                Case 100
+                    triggerHandle = New imageProcessTriggerEventArgs(currentFeature.Current.Value)
+                    RaiseEvent CameraProcessTriggered(Me, triggerHandle)
+                    state += 10
+                Case 110
+                    If doneHanle IsNot Nothing Then
+                        'take measured value/nominal value into list
+                        'there's one dimension missing on camera
+
+                        'error on LPC-Frame
+                        Dim nominalValue = .objectsDictionary(currentFeature.Current.Key)
+                        Dim realValue = .Transformation(cameraFrame, framesDefinition.LPC_REAL) * New PositionVector(doneHanle.OutputPositionInUnit, cameraFrame)
+
+                        __outputList.Add(New measuredDataPair(nominalValue.RawValue,
+                                                            realValue.RawValue,
+                                                            dimensionSelection(cameraFrame)))
+                        'check if next feature existed
+                        If currentFeature.MoveNext() Then
+                            state = 100 'do another measure
+                        Else
+                            Return True ' finished
+                        End If
+                    Else
+                        '------------------
+                        '   Camera working
+                        '-----------------
+                    End If
+            End Select
+
+        End With
+
+        Return False
+    End Function
+
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <remarks></remarks>
+    Sub imageProcessTriggered(sender As Object, e As imageProcessTriggerEventArgs) Handles Me.CameraProcessTriggered
+        Me.doneHanle = Nothing 'reset
+        e.ToolBlock.Run()
+    End Sub
+    ''' <summary>
+    ''' Image process finished
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Sub imageProcessDone(sender As Object, e As imageProcessEndEventArgs) Handles triggerHandle.ImageProcessDone
+        Me.doneHanle = e
+    End Sub
+
+End Class
+
+
+''' <summary>
+''' 1.Align F1 to C1 , measure R1,R2
+''' 2.Align F2 to C2 , meausre R2,R3
+''' 3.Align F3 to C3 (Orientation need) , measure R1,R2,R3,H1,H2
+''' 4. Do error fitting
+''' 5. Do step 1-4 until error vector converged 
+''' </summary>
+''' <remarks></remarks>
+Public Class lpcMark
+    Inherits measureProcedureType1Base
+
+    ''' <summary>
+    ''' Used to trigger external procedure
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Event CameraTriggered(ByVal sender As Object, ByVal e As EventArgs)
+
+    Protected currentTransformation As htmEdgeBase = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                         framesDefinition.C1REAL)
+
+
+    Protected Overrides Function finalizeProcedure(ByRef state As Integer) As Boolean
+
+    End Function
+
+    ''' <summary>
+    ''' Generate a transformation which origin is aligned on corresponding camera center
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function alignTheCameraCenter(item As itemsDefinition, correspondingFrame As framesDefinition) As htmEdgeBase
+        Dim __transformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                              correspondingFrame)
+        'move to camera center
+        __transformation.PositionVector = (__transformation * frames.Instance.objectsDictionary(item)).RawValue
+        Return __transformation
+    End Function
+
+
+    ''' <summary>
+    ''' 1. move X
+    ''' 2. align center by S
+    ''' 3. measure features , output pairs
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overrides Function measureProcedure(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                'to choke center
+                frames.Instance.CurrentMovingItem = framesDefinition.S0
+                frames.Instance.CurrentRItem = itemsDefinition.CHOKE_CENTER
+            Case 10
+                If Assembly.Instance.IsAllAxesSettled Then
+                Else
+
+                End If
+            Case 20
+                'align the F1
+                currentTransformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                       framesDefinition.C1REAL)
+                currentTransformation.PositionVector += (currentTransformation * frames.Instance.objectsDictionary(itemsDefinition.LPC_F1)).RawValue
+                frames.Instance.solveS(Nothing, frames.manipulationOptionsEnum.POSITION_ONLY)
+            Case 30
+                If Assembly.Instance.CommandEndStatus(controlUnitsEnum.S) =
+                    Automation.IDrivable.endStatus.EXECUTION_END Then
+                    'start measurement
+                Else
+
+                End If
+            Case 40
+                If False Then
+                    'meausrement done
+
+                    With frames.Instance
+                        Dim nominal = currentTransformation * .objectsDictionary(itemsDefinition.LPC_R1)
+                        dataPairCollection.Add(New measuredDataPair(nominal.RawValue.SubVector(0, 2),
+                                                                    Nothing))
+
+                    End With
+                End If
+            Case 100
+                'align the F2
+            Case 200
+                'align the F3 , TODO , reversed X,Y axis on LPC?
+                currentTransformation = frames.Instance.Transformation(framesDefinition.LPC_REAL,
+                                                                       framesDefinition.C3REAL)
+                currentTransformation.PositionVector += frames.Instance.objectsDictionary(itemsDefinition.LPC_F3).RawValue
+                frames.Instance.solveS(currentTransformation)
+
+        End Select
+
+        Return False
+
+    End Function
+
+    Protected Overrides Function preparationProcedure(ByRef state As Integer) As Boolean
+        'clear lpc real
+    End Function
+End Class

@@ -1,0 +1,202 @@
+﻿Imports Automation
+Imports MathNet.Numerics.LinearAlgebra
+''' <summary>
+''' Offer the basic data procedure flow
+''' Output: error matrix updating
+''' </summary>
+''' <remarks></remarks>
+Public MustInherit Class measureProcedureType1Base
+    Inherits systemControlPrototype
+    Implements IProcedure
+
+    Public Overridable Property Arguments As Object Implements IProcedure.Arguments
+    Public Property IsProcedureStarted As New flagController(Of interlockedFlag) Implements IProcedure.IsProcedureStarted
+    Public Overridable Property Result As IProcedure.procedureResultEnums Implements IProcedure.Result
+
+    Property IsOutputProcedue As Boolean = False
+
+    ReadOnly Property CurrentDataIndex As Integer
+        Get
+            Return dataPairCollection.Count - 1
+        End Get
+    End Property
+
+    ReadOnly Property ProcedureState As Integer
+        Get
+            Return __procedureState
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Used to store data pair
+    ''' Derived class should output this
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected dataPairCollection As List(Of measuredDataPair) = New List(Of measuredDataPair)
+
+    ''' <summary>
+    ''' Link to some external link
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected correspondingErrorMatrix As eulerHtmTR = Nothing
+
+    Protected tolerancePosition As Double = 0.001
+    Protected toleranceRotation As Double = 0.0001
+
+    Protected tryingTimes As Integer = 0
+    Protected tryingGoal As Integer = 3
+
+    Protected __procedureState As Integer = 0
+    Protected lastProcedureState As Integer = 0
+    Protected MustOverride Function measureProcedure(ByRef state As Integer) As Boolean
+    Protected MustOverride Function preparationProcedure(ByRef state As Integer) As Boolean
+    Protected MustOverride Function finalizeProcedure(ByRef state As Integer) As Boolean
+
+    Protected errorMatrix As eulerHtmTR = Nothing
+
+    Dim alarmPackErrorNotConverage As alarmContextBase = New alarmContextBase With {.Sender = Me}
+
+    Dim lastSystemSubState As Integer = 0
+
+    Protected ReadOnly Property IsErrorVectorAccepted As Boolean
+        Get
+            If errorMatrix Is Nothing Then
+                Return False
+            End If
+            Return (errorMatrix.ControlVector.SubVector(axisEntityEnum.X, 3).L2Norm <= tolerancePosition) And
+            (errorMatrix.ControlVector.SubVector(axisEntityEnum.A, 3).L2Norm <= toleranceRotation)
+        End Get
+    End Property
+
+    Function stateMeasure() As Integer
+
+        If IsOutputProcedue Then
+            'record procedure state
+            If lastProcedureState <> __procedureState Then
+                sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Procedure:{0}", __procedureState))
+                lastProcedureState = __procedureState
+            End If
+            If lastSystemSubState <> systemSubState Then
+                sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Sub-state:{0}", systemSubState))
+                lastSystemSubState = systemSubState
+            End If
+        Else
+            '-------------------------------
+            '   No need to output
+            '-------------------------------
+        End If
+
+        'through the measure procedure , get the ideal position and real position(measured one)
+        'turns into error gain/error form (error  = ideal-real)
+        'interating above procedure , until enough data count got
+        'processing datas, error vector/error matrix calculated
+        'update error matrix
+        'check if norm of error vector is smaller than low threshold
+        ' if yes , quit procedure
+        ' if no  , iterating
+
+        Select Case systemSubState
+            Case 0
+                If IsProcedureStarted.viewFlag(interlockedFlag.POSITION_OCCUPIED) Then
+                    tryingTimes = 0 'reset
+
+                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Initial Control Vector,{0}",
+                                                       correspondingErrorMatrix.ControlVector.ToVectorString.Replace(vbCrLf, vbTab)))
+
+                    systemSubState += 10
+                Else
+                    '---------------
+                    '   Wait Trigger
+                    '---------------
+                End If
+            Case 10
+                If preparationProcedure(__procedureState) Then
+                    __procedureState = 0 'reset
+                    systemSubState = 100
+                Else
+                    '------------
+                    '   Preparating
+                    '------------
+                End If
+            Case 100
+                'measure procedures
+                If measureProcedure(__procedureState) Then
+                    __procedureState = 0 'reset
+
+                    'procedure would output dataPairCollection
+                    'T_real_real1
+                    errorMatrix.RawValue = measuredDataPair.fitTransformation(dataPairCollection).RawValue
+
+                    '----------------------------------------
+                    '   Record
+                    '----------------------------------------
+                    sendMessage(internalEnum.GENERIC_MESSAGE,
+                                String.Format("Error Vector,{0}{2}Data Pairs,{2}{1}",
+                                              errorMatrix.ControlVector.ToVectorString.Replace(vbCrLf, vbTab),
+                                              measuredDataPair.pairsOutput(dataPairCollection),
+                                              vbCrLf))
+
+                    dataPairCollection.Clear()
+
+                    'cascade current error matrix
+                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Before,{0}", correspondingErrorMatrix.ControlVector.ToVectorString.Replace(vbCrLf, vbTab)))
+                    correspondingErrorMatrix.RawValue = correspondingErrorMatrix.RawValue * errorMatrix.RawValue.Inverse
+                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("After,{0}", correspondingErrorMatrix.ControlVector.ToVectorString.Replace(vbCrLf, vbTab)))
+
+                    If Not IsErrorVectorAccepted And
+                        tryingTimes < tryingGoal Then
+                        '-------------------------
+                        'not converged , but trying times not over the given value
+                        'keep trying
+                        '-------------------------
+                        tryingTimes += 1
+                    Else
+                        'converged/trying times reached , procedure done
+                        systemSubState = 500
+                    End If
+                Else
+                    '--------------------------
+                    '   Measuring
+                    '--------------------------
+                End If
+            Case 500
+                If finalizeProcedure(__procedureState) Then
+                    '------------------
+                    '   Procedure Done
+                    '------------------
+                    If IsErrorVectorAccepted Then
+                        '----------------
+                        '   Well done
+                        '----------------
+                        sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Accumulated Control Vector,{0}",
+                                                                               correspondingErrorMatrix.ControlVector.ToVectorString.Replace(vbCrLf, vbTab)))
+                        Result = IProcedure.procedureResultEnums.SUCCESS
+                    Else
+                        'not coveraged , report error
+                        alarmPackErrorNotConverage.AdditionalInfo =
+                            String.Format("Error Vector Cannot Converage, {0}",
+                                          errorMatrix.ControlVector.L2Norm)
+                        CentralAlarmObject.raisingAlarm(alarmPackErrorNotConverage)
+                        Result = IProcedure.procedureResultEnums.BREAK
+                    End If
+
+                    IsProcedureStarted.resetFlag(interlockedFlag.POSITION_OCCUPIED) ' reset flag
+                    systemSubState = 0
+                Else
+                    '--------------------
+                    '   Procedure running
+                    '--------------------
+                End If
+
+        End Select
+
+        Return 0
+
+    End Function
+
+    Sub New()
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateMeasure
+        Me.systemMainState = systemStatesEnum.EXECUTE
+    End Sub
+
+End Class

@@ -1,0 +1,205 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+Imports System.Text
+Imports AutoNumeric.utilities
+
+Public Class measuredDataPair
+
+    Enum cascadeDefinitionsEnum As Byte
+        ERROR_GAIN = 0
+        ERROR_POSITION
+    End Enum
+
+    ''' <summary>
+    ''' 3x1
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property OriginalErrorPosition As Vector(Of Double)
+        Get
+            Return __originalErrorPosition
+        End Get
+    End Property
+    ''' <summary>
+    ''' 3x6
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property ErrorGain As Matrix(Of Double)
+        Get
+            Return __errorGain
+        End Get
+    End Property
+    ReadOnly Property OriginalIdealPosition As Vector(Of Double)
+        Get
+            Return __originalIdealPosition
+        End Get
+    End Property
+    ReadOnly Property OriginalRealPosition As Vector(Of Double)
+        Get
+            Return __originalRealPosition
+        End Get
+    End Property
+
+
+    Friend __errorGain As Matrix(Of Double) = Nothing
+    ''' <summary>
+    ''' Definition : ideal-real
+    ''' </summary>
+    ''' <remarks></remarks>
+    Friend __originalErrorPosition As Vector(Of Double) = Nothing
+
+    Friend __originalIdealPosition As Vector(Of Double) = Nothing
+    Friend __originalRealPosition As Vector(Of Double) = Nothing
+
+    Friend __dimensionIdealPosition As Vector(Of Double) = Nothing
+    Friend __dimensionRealPosition As Vector(Of Double) = Nothing
+    Friend __dimensionErrorPosition As Vector(Of Double) = Nothing
+    Friend __gainSelection As Integer = 0
+    ''' <summary>
+    ''' Turns data pair into ErrorGain Collection and ErrorValue Collection
+    ''' </summary>
+    ''' <param name="collection"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Friend Shared Function pairsCascade(collection As List(Of measuredDataPair)) As Object
+
+        Dim cascadedErrorPosition As Matrix(Of Double) = Nothing
+        Dim cascadedErrorGain As Matrix(Of Double) = Nothing
+
+        For index = 0 To collection.Count - 1
+            'according dimension count to seperate sub matrix
+            'e.g takes the X/Y parts only , discard Z part
+            Dim __gain = collection(index).__errorGain
+            If cascadedErrorGain Is Nothing Then
+                'for the first one
+                cascadedErrorGain = __gain
+            Else
+                cascadedErrorGain = cascadedErrorGain.Stack(__gain)
+            End If
+
+            Dim __vector = collection(index).__dimensionErrorPosition
+            If cascadedErrorPosition Is Nothing Then
+                'for the first one
+                cascadedErrorPosition = __vector.ToColumnMatrix
+            Else
+                cascadedErrorPosition = cascadedErrorPosition.Stack(__vector.ToColumnMatrix)
+            End If
+        Next
+
+        Return {cascadedErrorGain,
+                CreateVector.Dense(Of Double)(cascadedErrorPosition.ToColumnMajorArray)}
+    End Function
+    ''' <summary>
+    ''' Turns data pair into fitted error vector
+    ''' </summary>
+    ''' <param name="collection"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function fitErrorVector(collection As List(Of measuredDataPair)) As Vector(Of Double)
+        'cascade datas
+        Dim cascade = measuredDataPair.pairsCascade(collection)
+        Dim errorGains As Matrix(Of Double) = CType(cascade(cascadeDefinitionsEnum.ERROR_GAIN), Matrix(Of Double))
+        Dim errorPositions As Vector(Of Double) = CType(cascade(cascadeDefinitionsEnum.ERROR_POSITION), Vector(Of Double))
+        'do pseudoinverse to analyze the error vector
+        Return errorGains.PseudoInverse * errorPositions
+    End Function
+
+
+    Shared iterationTolerance As Double = 0.000001
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="collection"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function fitTransformation(collection As List(Of measuredDataPair)) As htmEdgeElementary
+
+        Dim output As htmEdgeElementary = New htmEdgeElementary(Nothing,
+                                                                Nothing)
+        Dim __revisedCollection As List(Of measuredDataPair) = New List(Of measuredDataPair)(collection)
+        '-----------------------------
+        'use full xyz rotate/translate
+        '-----------------------------
+        Dim errorMatrix As eulerHtmTR = New eulerHtmTR(Nothing,
+                                               Nothing)
+
+        Do
+            errorMatrix.ControlVector = fitErrorVector(__revisedCollection)
+
+            'cascade errors
+            output = errorMatrix * output
+
+            __revisedCollection.Clear()
+            For Each item As measuredDataPair In collection
+                __revisedCollection.Add(New measuredDataPair((output * New PositionVector(item.OriginalIdealPosition, Nothing)).RawValue,
+                                                             item.OriginalRealPosition,
+                                                              item.__gainSelection))
+            Next
+            'Trace.WriteLine(measuredDataPair.pairsOutput(__revisedCollection))
+
+            'until error vector less than...
+        Loop Until errorMatrix.ControlVector.L2Norm < iterationTolerance
+
+        'Trace.WriteLine(output.RawValue.ToString)
+
+
+        Return output
+
+    End Function
+
+    Shared Function pairsOutput(collection As List(Of measuredDataPair)) As String
+        Dim sb As StringBuilder = New StringBuilder
+        sb.AppendLine("Real,Ideal,Error")
+        collection.ForEach(Sub(pair As measuredDataPair)
+                               With sb
+                                   'real ideal error
+                                   .AppendLine(String.Format("{0},{1},{2}",
+                                                             pair.__dimensionRealPosition.ToVectorString.Replace(vbCrLf, vbTab),
+                                                             pair.__dimensionIdealPosition.ToVectorString.Replace(vbCrLf, vbTab),
+                                                             pair.__dimensionErrorPosition.ToVectorString.Replace(vbCrLf, vbTab)))
+                               End With
+                           End Sub)
+
+        Return sb.ToString
+    End Function
+
+    ''' <summary>
+    ''' Ideal : the value calculated throught the known chain
+    ''' Real : the value measured in unknown chain
+    ''' </summary>
+    ''' <param name="originalIdealPosition"></param>
+    ''' <param name="originalRealPosition"></param>
+    ''' <param name="selection"></param>
+    ''' <remarks></remarks>
+    Sub New(originalIdealPosition As Vector(Of Double),
+            originalRealPosition As Vector(Of Double),
+            selection As utilities.selectionEnums)
+
+        Dim value = [Enum].GetValues(GetType(utilities.selectionEnums))
+
+        Dim idealValues As List(Of Double) = New List(Of Double)
+        Dim realValues As List(Of Double) = New List(Of Double)
+
+        For index = 0 To value.Length - 1
+            If selection And value(index) Then
+                'if dimension selected
+                idealValues.Add(originalIdealPosition(index))
+                realValues.Add(originalRealPosition(index))
+            End If
+        Next
+
+        Me.__originalIdealPosition = originalIdealPosition
+        Me.__originalRealPosition = originalRealPosition
+        Me.__originalErrorPosition = Me.__originalIdealPosition - Me.__originalRealPosition
+
+        Me.__gainSelection = selection
+        Me.__dimensionIdealPosition = CreateVector.DenseOfArray(Of Double)(idealValues.ToArray)
+        Me.__dimensionRealPosition = CreateVector.DenseOfArray(Of Double)(realValues.ToArray)
+        Me.__dimensionErrorPosition = __dimensionIdealPosition - __dimensionRealPosition
+        Me.__errorGain = utilities.position2ErrorGain(originalIdealPosition,
+                                                      selection)
+    End Sub
+
+End Class

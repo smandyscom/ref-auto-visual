@@ -1,0 +1,66 @@
+﻿Imports AutoNumeric
+
+
+''' <summary>
+''' Singleton
+''' S0->R
+''' </summary>
+''' <remarks></remarks>
+Public Class s0Htm
+    Inherits htmEdgeElementary
+
+    ''' <summary>
+    ''' The Ax Control Value From Zero Point
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property AxFromZero As Double
+        Get
+            Return __axFromZero
+        End Get
+        Set(value As Double)
+            __axFromZero = value
+            'update current status
+            __matrixCore(0, 3) = __axFromZero + ZeroOffset
+        End Set
+    End Property
+    Dim __axFromZero As Double = 0
+
+    'TODO , link motorX , read CommandPosition
+    'Property AxFromHome As Double
+    '    Get
+    '        Return __axFromZero + ZeroOffset
+    '    End Get
+    '    Set(value As Double)
+    '        AxFromZero = value - ZeroOffset
+    '    End Set
+    'End Property
+
+    ''' <summary>
+    ''' Need to be stored
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property ZeroOffset As Double = 0
+
+    Protected Sub New()
+        MyBase.New(framesDefinition.S0,
+                   framesDefinition.R)
+    End Sub
+
+    Shared __reference As s0Htm = Nothing
+    Public Shared ReadOnly Property Instance As s0Htm
+        Get
+            If __reference Is Nothing Then
+                __reference = New s0Htm
+            End If
+            Return __reference
+        End Get
+    End Property
+
+    'TODO , load zero offset
+    'TODO , override save() , always save zero value
+
+End Class

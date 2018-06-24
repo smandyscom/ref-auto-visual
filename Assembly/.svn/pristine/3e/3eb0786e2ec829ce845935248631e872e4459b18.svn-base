@@ -1,0 +1,30 @@
+﻿Imports Automation
+
+Public Class userControlFrameManager1
+
+    'select ritem, moving
+    Sub loadControl() Handles MyBase.Load
+        utilitiesUI.loadComboBoxItemByEnum(ComboBoxRItems, GetType(itemsDefinition))
+        utilitiesUI.loadComboBoxItemByEnum(ComboBoxMovingItems, GetType(framesDefinition))
+    End Sub
+
+    Sub comboBoxItemSelected(sender As ComboBox, e As EventArgs) Handles ComboBoxRItems.SelectedValueChanged,
+        ComboBoxMovingItems.SelectedValueChanged
+
+        Select Case sender.Name
+            Case ComboBoxRItems.Name
+                frames.Instance.CurrentRItem = sender.SelectedValue
+                PropertyGridRItem.SelectedObject = frames.Instance.CurrentRObject
+            Case ComboBoxMovingItems.Name
+                frames.Instance.CurrentMovingItem = sender.SelectedValue
+        End Select
+
+    End Sub
+
+    Private Sub timerTicks(sender As Object, e As EventArgs) Handles timerScan.Tick
+        For Each item As ComboBox In {ComboBoxRItems,
+                                      ComboBoxMovingItems}
+            item.Enabled = Assembly.Instance.IsXYZSettled
+        Next
+    End Sub
+End Class

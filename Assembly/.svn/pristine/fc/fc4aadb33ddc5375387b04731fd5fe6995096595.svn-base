@@ -1,0 +1,31 @@
+﻿Imports AutoNumeric
+
+Public Class userControlFrameManagers
+    Sub loadControl() Handles MyBase.Load
+
+        With UserControlFrameControlElementX
+            .AxisEntity = AutoNumeric.axisEntityEnum.X
+            .AxisReference = s0Htm.Instance
+        End With
+        With UserControlFrameControlElementY
+            .AxisEntity = AutoNumeric.axisEntityEnum.Y
+            .AxisReference = c4htm.Instance
+        End With
+        With UserControlFrameControlElementZ
+            .AxisEntity = AutoNumeric.axisEntityEnum.Z
+            .AxisReference = c4htm.Instance
+        End With
+
+        Dim counter As Integer = 0
+        For Each item As userControlFrameControlElement In {UserControlFrameControlElementSX,
+                                                            UserControlFrameControlElementSY,
+                                                            UserControlFrameControlElementSZ,
+                                                            UserControlFrameControlElementSA,
+                                                            UserControlFrameControlElementSB,
+                                                            UserControlFrameControlElementSC}
+            item.AxisEntity = [Enum].ToObject(GetType(axisEntityEnum), counter)
+            item.AxisReference = sHtm.Instance
+            counter += 1
+        Next
+    End Sub
+End Class

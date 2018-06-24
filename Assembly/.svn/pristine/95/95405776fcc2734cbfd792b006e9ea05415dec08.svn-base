@@ -1,0 +1,143 @@
+﻿'==========================================================================
+' The AmicOpenWareVB.NET project is used to demostrate the .NET Framework how to use
+' the AMIC OpenWare DLL via VB.NET language,the program can communication with 
+' AMIC's RFID Reader  
+' 
+' Toolchain : Microsoft Visual Studio.NET 2003 & .NET Framework 1.1 
+' Language : VB.NET 
+' @Author : HY 
+' @All Copyright Reserved,AMIC Technology Corporation 2005
+'==========================================================================
+
+
+Imports System.Runtime.InteropServices  'for invoke MFC DLL - OpenWareDLL.dll
+
+'=======================================================================
+' Import the AMIC OpenWare 1.0 DLL API 
+' The API is in the MFC DLL 
+' HY,2005/10/14
+'=======================================================================
+Public Class AmicOpenWareSDK
+    'Device Open
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_DeviceOpenDotNet(ByVal byteArrayComPort As Byte()) As Integer
+    End Function
+    'Device Close
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_DeviceCloseDotNet() As Integer
+    End Function
+    'Clear 15693 Data
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_ClearAll15693DataDotNet() As Integer
+    End Function
+    'Read Block 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_ReadBlockRequestDotNet(ByVal nBlockNo As Integer, ByVal bAddressing As Boolean, ByVal bOption As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Get System Info 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetSysInfoRequestDotNet(ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Get Card UID 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetCardUIDRequestDotNet() As Integer
+    End Function
+    'Dump Tag 112 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_DumpTagRequestDotNet() As Integer
+    End Function
+    'Dump Tag 256 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_DumpTag256RequestDotNet() As Integer
+    End Function
+    'Write Block Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_WriteBlockRequestDotNet(ByVal nTagType As Integer, ByVal nBlockNo As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte(), ByVal strWriteData As Byte()) As Integer
+    End Function
+    'Lock Block Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_LockBlockRequestDotNet(ByVal nTagType As Integer, ByVal nBlockNo As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Write AFI Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_WriteAFIRequestDotNet(ByVal nTagType As Integer, ByVal nAFI As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Write DSFID Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_WriteDSFIDRequestDotNet(ByVal nTagType As Integer, ByVal nDSFID As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Lock AFI Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_LockAFIRequestDotNet(ByVal nTagType As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    'Lock DSFID Request
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_LockDSFIDRequestDotNet(ByVal nTagType As Integer, ByVal bAddressing As Boolean, ByVal strUID As Byte()) As Integer
+    End Function
+    ' ===== Clear ResponseHex ======================
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_ClearResponseHexDotNet() As Integer
+    End Function
+    ' ===== Get RC of ProcessResponse =====
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetRCProcessResponseDotNet() As Integer
+    End Function
+    ' ===== set rc =0 ==============
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_ClearRCProcessResponseDotNet() As Integer
+    End Function
+    'Get Response Flag
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetResponseFlagDotNet(ByVal byteArrayResponseFlag As Byte()) As Integer
+    End Function
+    'Get Security Status
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetSecurityStatusDotNet(ByVal byteArraySecurityStatus As Byte()) As Integer
+    End Function
+    'Get Block Data
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetBlockDataDotNet(ByVal byteArrayBlockData As Byte()) As Integer
+    End Function
+    'Get UID 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetUIDDotNet(ByVal byteArrayUID As Byte()) As Integer
+    End Function
+    'Get VICC Mem size 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetVICCMemSizeDotNet(ByVal byteArrayVICC As Byte()) As Integer
+    End Function
+    'Get Info Flag 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetInfoFlagDotNet(ByVal byteArrayInfoFlag As Byte()) As Integer
+    End Function
+    'Get Error Code 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetErrorCodeDotNet(ByVal byteArrayError As Byte()) As Integer
+    End Function
+    'Get DSFID 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetDSFIDDataDotNet(ByVal byteArrayDSFID As Byte()) As Integer
+    End Function
+    'Get AFI 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetAFIDataDotNet(ByVal byteArrayAFI As Byte()) As Integer
+    End Function
+    'Get IC Ref
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetICRefDotNet(ByVal byteArrayICRef As Byte()) As Integer
+    End Function
+    'Get Tag Data 112 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetTagData112DotNet(ByVal byteArrayTagData112 As Byte()) As Integer
+    End Function
+    'Get Tag Data 256
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetTagData256DotNet(ByVal byteArrayTagData256 As Byte()) As Integer
+    End Function
+    'Get DLL Version 
+    <DllImport("AmicModuleDLL.dll", CharSet:=CharSet.Auto)> _
+    Public Shared Function Amic_GetDLLVersionDotNet(ByVal strDLLVersion As Byte()) As Integer
+    End Function
+
+End Class
+

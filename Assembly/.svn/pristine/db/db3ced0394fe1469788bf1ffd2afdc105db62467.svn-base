@@ -1,0 +1,76 @@
+﻿Imports AutoNumeric
+Imports System.Xml.Serialization
+
+''' <summary>
+''' Singleton
+''' C4->Y0REAL
+''' </summary>
+''' <remarks></remarks>
+Public Class c4htm
+    Inherits htmEdgeElementary
+
+    Public Event TransformationChanged(ByVal sender As Object, ByVal e As EventArgs)
+
+    ''' <summary>
+    ''' The Ay Control Value From Zero Point
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    <XmlIgnore()>
+    Property AyFromZero As Double
+        Get
+            'update ayFromHome
+            __ayFromZero = __matrixCore(0, axisEntityEnum.Y) - YZeroOffset
+            Return __ayFromZero
+        End Get
+        Set(value As Double)
+            __ayFromZero = value
+            'update
+            __matrixCore(0, axisEntityEnum.Y) = value + YZeroOffset
+            RaiseEvent TransformationChanged(Me, EventArgs.Empty)
+        End Set
+    End Property
+    <XmlIgnore()>
+    Property AzFromZero As Double
+        Get
+            'update azFromHome
+            __azFromZero = __matrixCore(0, axisEntityEnum.Z) - ZZeroOffset
+            Return __azFromZero
+        End Get
+        Set(value As Double)
+            __azFromZero = value
+            __matrixCore(0, axisEntityEnum.Z) = value + ZZeroOffset
+            RaiseEvent TransformationChanged(Me, EventArgs.Empty)
+        End Set
+    End Property
+
+    Dim __ayFromZero As Double = 0
+    Dim __azFromZero As Double = 0
+
+    ''' <summary>
+    ''' Need to be stored
+    ''' The home position reference to previous frame
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property YZeroOffset As Double = 0
+    Property ZZeroOffset As Double = 0
+
+    Protected Sub New()
+        MyBase.New(framesDefinition.C4,
+                   framesDefinition.Y0REAL)
+    End Sub
+
+    Shared __instance As c4htm = Nothing
+    Public Shared ReadOnly Property Instance As c4htm
+        Get
+            If __instance Is Nothing Then
+                __instance = New c4htm
+            End If
+            Return __instance
+        End Get
+    End Property
+
+End Class

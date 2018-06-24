@@ -1,0 +1,101 @@
+﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+Partial Class userControlSensorMap
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl 覆寫 Dispose 以清除元件清單。
+    <System.Diagnostics.DebuggerNonUserCode()> _
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    '為 Windows Form 設計工具的必要項
+    Private components As System.ComponentModel.IContainer
+
+    '注意:  以下為 Windows Form 設計工具所需的程序
+    '可以使用 Windows Form 設計工具進行修改。
+    '請不要使用程式碼編輯器進行修改。
+    <System.Diagnostics.DebuggerStepThrough()> _
+    Private Sub InitializeComponent()
+        Me.components = New System.ComponentModel.Container()
+        Me.LabelAreaB = New System.Windows.Forms.Label()
+        Me.LabelAreaD1 = New System.Windows.Forms.Label()
+        Me.TimerFlash = New System.Windows.Forms.Timer(Me.components)
+        Me.LabelAreaA1 = New System.Windows.Forms.Label()
+        Me.LabelAreaE1 = New System.Windows.Forms.Label()
+        Me.SuspendLayout()
+        '
+        'LabelAreaB
+        '
+        Me.LabelAreaB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        Me.LabelAreaB.Font = New System.Drawing.Font("微軟正黑體", 24.0!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.LabelAreaB.Location = New System.Drawing.Point(128, 8)
+        Me.LabelAreaB.Name = "LabelAreaB"
+        Me.LabelAreaB.Size = New System.Drawing.Size(280, 40)
+        Me.LabelAreaB.TabIndex = 8
+        Me.LabelAreaB.Text = "B1"
+        Me.LabelAreaB.TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+        '
+        'LabelAreaD1
+        '
+        Me.LabelAreaD1.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        Me.LabelAreaD1.Font = New System.Drawing.Font("微軟正黑體", 24.0!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.LabelAreaD1.Location = New System.Drawing.Point(48, 112)
+        Me.LabelAreaD1.Name = "LabelAreaD1"
+        Me.LabelAreaD1.Size = New System.Drawing.Size(72, 96)
+        Me.LabelAreaD1.TabIndex = 9
+        Me.LabelAreaD1.Text = "D1"
+        Me.LabelAreaD1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+        '
+        'TimerFlash
+        '
+        Me.TimerFlash.Interval = 500
+        '
+        'LabelAreaA1
+        '
+        Me.LabelAreaA1.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        Me.LabelAreaA1.Font = New System.Drawing.Font("微軟正黑體", 24.0!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.LabelAreaA1.Location = New System.Drawing.Point(128, 56)
+        Me.LabelAreaA1.Name = "LabelAreaA1"
+        Me.LabelAreaA1.Size = New System.Drawing.Size(280, 48)
+        Me.LabelAreaA1.TabIndex = 12
+        Me.LabelAreaA1.Text = "A1"
+        Me.LabelAreaA1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+        '
+        'LabelAreaE1
+        '
+        Me.LabelAreaE1.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle
+        Me.LabelAreaE1.Font = New System.Drawing.Font("微軟正黑體", 24.0!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.LabelAreaE1.Location = New System.Drawing.Point(48, 56)
+        Me.LabelAreaE1.Name = "LabelAreaE1"
+        Me.LabelAreaE1.Size = New System.Drawing.Size(72, 48)
+        Me.LabelAreaE1.TabIndex = 14
+        Me.LabelAreaE1.Text = "E1"
+        Me.LabelAreaE1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+        '
+        'userControlSensorMap
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 12.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.AutoSize = True
+        Me.Controls.Add(Me.LabelAreaE1)
+        Me.Controls.Add(Me.LabelAreaB)
+        Me.Controls.Add(Me.LabelAreaA1)
+        Me.Controls.Add(Me.LabelAreaD1)
+        Me.Name = "userControlSensorMap"
+        Me.Size = New System.Drawing.Size(505, 224)
+        Me.ResumeLayout(False)
+
+    End Sub
+    Friend WithEvents LabelAreaB As System.Windows.Forms.Label
+    Friend WithEvents LabelAreaD1 As System.Windows.Forms.Label
+    Friend WithEvents TimerFlash As System.Windows.Forms.Timer
+    Friend WithEvents LabelAreaA1 As System.Windows.Forms.Label
+    Friend WithEvents LabelAreaE1 As System.Windows.Forms.Label
+
+End Class

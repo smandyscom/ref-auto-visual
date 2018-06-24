@@ -1,0 +1,896 @@
+Imports System.IO
+Imports System.Xml.Serialization
+Imports System.ComponentModel
+Public Module mdlAMONetInit
+    '------------------------
+    ' MARCO definition
+    '------------------------
+    Public Const IS_OFF = 0
+    Public Const IS_ON = 1
+    'Public Const IS_UnStable = -1
+    'Public Const IO_IN = 0
+    'Public Const IO_OUT = 1
+    'Public Const IsOff = 0
+    'Public Const IsOn = 1
+
+   
+    'Public motionStatusQueryLock As Object = New Object    'Hsien , used to lock query methods
+    Public Locking As New Object            ' used as syncLock object
+    'Public amaxConfiguration As AmonetConfiguration = New AmonetConfiguration()        ' the AMONet system state instance
+
+    'Public Class AmonetConfiguration
+    '    ' ------------------------------
+    '    ' the AMONet system state object
+    '    ' ------------------------------
+
+    '    <DisplayName("通訊速率")> Property Baudrate As amaxBaudrate = amaxBaudrate.BAUD_20M       'Hsien , 2015.01.30 , could be setup in run-time
+    '    <DisplayName("運動控制模組IP表")> Property MotionDeviceIP_Table As Short() = New Short() {}
+    '    <DisplayName("數位輸入模組IP表")> Property InDeviceIP_Table As Short() = New Short() {}
+    '    <DisplayName("數位輸出模組IP表")> Property OutDeviceIP_Table As Short() = New Short() {}  ' stored all output IO device , content=DeviceIP , remarked by Hsien , 2014/5/27
+
+    '    Public MotionNoExist() As Short = {}  '不存在的
+    '    Public InNoExist() As Short = {}
+    '    Public OutNoExist() As Short = {}
+
+    '    '=== Initial Flag ===
+    '    <XmlIgnore()> Public AMONetCard As Short                  ' AMax is Enabled or Not
+    '    <XmlIgnore()> Public RingEnabled_f As Boolean() = New Boolean(1) {}       ' Ring is Enabled or Not
+    '    <XmlIgnore()> Public MotionEnabled_f As Boolean() = New Boolean(1) {}        ' Motion is Enabled or Not
+    '    <XmlIgnore()> Public RingWatchDog_f As Boolean() = New Boolean(1) {}         ' WatchDog is Enabled or Not
+
+    '    '=== Error Message and Code ===
+    '    <XmlIgnore()> Public strErrMsg As String
+    '    <XmlIgnore()> Public numErrAxis As Short
+
+    '    '=== Device IP Table ===        
+    '    Structure typDeviceIP_Table
+    '        Public sType As String  '模組的類型 M:AMAX-2241, I:AMAX-2752, P:AMAX-2754
+    '        Public iIndex As Byte   '該類型模組的序號
+    '        Public iExist As Byte   '1:存在, 0:不存在
+    '    End Structure
+
+
+    '    <XmlIgnore()> Public DeviceIP_Table(127) As typDeviceIP_Table
+    '    '一共有0~127個位置，代表ring0(0~63)與ring1(64~127)各64個位置。
+    '    '記錄每個模組的型態、排序
+    '    '如DeviceIP_Table(3).sType=M
+    '    'DeviceIP_Table(3).iIndex=5
+    '    '代表在MotionDeviceIP_Table的第5個位置其IP是Ring0-03
+    '    'InDeviceIP_Table,OutDeviceIP_Table,MotionDeviceIP_Table可組成一個DeviceIP_Table
+    '    '在AMax_DeviceIP_Table初始化
+
+    '    '=== Device Number ===
+    '    <XmlIgnore()> Public InNo As Short() = New Short(1) {}      '每個ring各有幾個input module，包含不存在的
+    '    <XmlIgnore()> Public OutNo As Short() = New Short(1) {}     '每個ring各有幾個output module，包含不存在的
+    '    <XmlIgnore()> Public MotionNo As Short() = New Short(1) {}  '每個ring各有幾個motion module，包含不存在的
+
+    '    <XmlIgnore()> Public InBitNumber As Short ' how many input bits   this machine hold
+    '    <XmlIgnore()> Public OutBitNumber As Short ' how many output bits   this machine hold
+
+
+    '    Sub initialize()
+    '        Dim i As Short
+    '        Dim iID As Int16, iExist As Int16 'iExist=1代表存在， iExist=-1代表不存在
+
+    '        'Hsien , clear DeviceIP_Table , 2014.09.24
+    '        For Each device As typDeviceIP_Table In Me.DeviceIP_Table
+    '            device.iExist = 0
+    '            device.iIndex = 0
+    '            device.sType = ""
+    '        Next
+
+    '        InBitNumber = (UBound(InDeviceIP_Table) - LBound(InDeviceIP_Table) + 1) * 32
+    '        OutBitNumber = (UBound(OutDeviceIP_Table) - LBound(OutDeviceIP_Table) + 1) * 32
+
+    '        MotionNo(0) = 0 : MotionNo(1) = 0
+    '        For i = LBound(MotionDeviceIP_Table) To UBound(MotionDeviceIP_Table)
+    '            If MotionDeviceIP_Table(i) < 64 Then MotionNo(0) = MotionNo(0) + 1 Else MotionNo(1) = MotionNo(1) + 1
+    '        Next
+    '        '統計ring0,ring1各有幾個amax-2752
+    '        InNo(0) = 0 : InNo(1) = 0
+    '        For i = LBound(InDeviceIP_Table) To UBound(InDeviceIP_Table)
+    '            If InDeviceIP_Table(i) < 64 Then InNo(0) = InNo(0) + 1 Else InNo(1) = InNo(1) + 1
+    '        Next
+    '        '統計ring0,ring1各有幾個amax-2754
+    '        OutNo(0) = 0 : OutNo(1) = 0
+    '        For i = LBound(OutDeviceIP_Table) To UBound(OutDeviceIP_Table)
+    '            If OutDeviceIP_Table(i) < 64 Then OutNo(0) = OutNo(0) + 1 Else OutNo(1) = OutNo(1) + 1
+    '        Next
+    '        '======= 建立DeviceIP_Table =====================================================
+    '        '----------------------------
+    '        '   For MOTION modules
+    '        '----------------------------
+    '        For i = LBound(MotionDeviceIP_Table) To UBound(MotionDeviceIP_Table)
+    '            iID = MotionDeviceIP_Table(i)
+    '            If DeviceIP_Table(iID).sType = "" Then
+    '                DeviceIP_Table(iID).sType = "M"
+    '                DeviceIP_Table(iID).iIndex = i
+    '                DeviceIP_Table(iID).iExist = 1
+    '            Else
+    '                MsgBox("Ring" & (iID \ 64) & ",ID=" & iID Mod 64 & " 重複!!")
+    '            End If
+    '        Next
+    '        '----------------------------
+    '        '   For INPUT modules
+    '        '----------------------------
+    '        For i = LBound(InDeviceIP_Table) To UBound(InDeviceIP_Table)
+    '            iID = InDeviceIP_Table(i)
+    '            If DeviceIP_Table(iID).sType = "" Then
+    '                DeviceIP_Table(iID).sType = "I"
+    '                DeviceIP_Table(iID).iIndex = i
+    '                DeviceIP_Table(iID).iExist = 1
+    '            Else
+    '                MsgBox("Ring" & (iID \ 64) & ",ID=" & iID Mod 64 & " 重複!!")
+    '            End If
+    '        Next
+    '        '----------------------------
+    '        '   For OUTPUT modules
+    '        '----------------------------
+    '        For i = LBound(OutDeviceIP_Table) To UBound(OutDeviceIP_Table)
+    '            iID = OutDeviceIP_Table(i)
+    '            If DeviceIP_Table(iID).sType = "" Then
+    '                DeviceIP_Table(iID).sType = "P"
+    '                DeviceIP_Table(iID).iIndex = i
+    '                DeviceIP_Table(iID).iExist = 1
+    '            Else
+    '                MsgBox("Ring" & (iID \ 64) & ",ID=" & iID Mod 64 & " 重複!!")
+    '            End If
+    '        Next
+
+    '        '======= 如果NoExist為""則跳出 ===========================
+    '        Err.Clear()
+    '        On Error Resume Next
+    '        Dim a As Integer
+    '        Dim b As Integer
+
+    '        For i = LBound(MotionNoExist) To UBound(MotionNoExist)
+    '            If Err.Number <> 0 Then Err.Clear() : Exit For
+    '            iID = MotionNoExist(i)
+    '            DeviceIP_Table(iID).iExist = 0
+    '        Next
+
+    '        For i = LBound(InNoExist) To UBound(InNoExist)
+    '            If Err.Number <> 0 Then Err.Clear() : Exit For
+    '            iID = InNoExist(i)
+    '            DeviceIP_Table(iID).iExist = 0
+    '        Next
+
+    '        For i = LBound(OutNoExist) To UBound(OutNoExist)
+    '            If Err.Number <> 0 Then Err.Clear() : Exit For
+    '            iID = OutNoExist(i)
+    '            DeviceIP_Table(iID).iExist = 0
+    '        Next
+
+    '    End Sub
+
+    '    Private Sub DebugShowArray()
+    '        'Dim iIn, iOut, iMotion, iRing As Short
+    '        Dim i As Short
+    '        Dim S As String
+    '        Dim sExist As String
+
+    '        S = ".DeviceIP_Table=" & vbNewLine
+    '        For i = LBound(DeviceIP_Table) To UBound(DeviceIP_Table)
+
+    '            If DeviceIP_Table(i).sType <> "" & DeviceIP_Table(i).iExist = 0 Then
+    '                sExist = "*"
+    '            Else
+    '                sExist = " "
+    '            End If
+    '            S = S & "[" & Left(DeviceIP_Table(i).sType & Space(1), 1) & sExist & "]"
+    '            If i Mod 8 = 7 Then
+    '                S = S & vbNewLine
+    '            End If
+    '        Next
+    '        Debug.Print(S)
+
+    '    End Sub
+
+    '    <XmlIgnore()> Public IsInitialized As Boolean = False 'dedicate if initialized successfully , Hsien , 2015.08.19
+    'End Class
+
+    '===============================================
+    ' Network system initialization and finalization
+    '===============================================
+    'Public Function AMax_iniCard() As Boolean
+    '    Dim strErrStatus As String = ""
+    '    ''* AMax 控制卡初始化
+    '    If AMax_CardSet(strErrStatus) < 1 Then
+    '        ' error occured
+    '        strErrStatus = "AMax_iniCard() Error" & Chr(13) & "AMax Master device has not found !"
+    '        Call boxErrAmaxRing(strErrStatus)
+
+    '        Return False
+
+    '    End If ' Return AMax-Card-Number
+
+    '    Return True
+
+    'End Function
+    'Public Function AMax_iniRing(ByVal RingNo As Integer, ByVal Baudrate As amaxBaudrate) As Boolean
+    '    Dim iniStatus As Short
+    '    Dim strErrStatus As String = ""
+    '    AMax_iniRing = True
+    '    ' Ring Start
+    '    ' Set the AMONet command retry times. (Default : 20)
+    '    Dim result = B_mnet_set_retry_times(RingNo, 10)
+    '    '=== Card and Ring Initialization ===
+    '    If amaxConfiguration.InNo(RingNo) + amaxConfiguration.OutNo(RingNo) + amaxConfiguration.MotionNo(RingNo) > 0 Then
+    '        amaxConfiguration.RingWatchDog_f(RingNo) = True ' Enable or Disable the Watch-Dog of the AMax
+    '        iniStatus = AMax_RingStart(RingNo,
+    '                                   Baudrate,
+    '                                   amaxConfiguration.RingWatchDog_f(RingNo),
+    '                                   strErrStatus)
+    '        If iniStatus < 0 Then
+    '            Call boxErrAmaxRing(strErrStatus) ' Show Ring Error-Message-Box
+    '            AMax_iniRing = False
+    '        End If
+    '    End If
+    'End Function
+    'Public Function AMax_iniMotion(ByVal RingNo As Short) As Boolean
+    '    Dim iniStatus(1, 20) As Short
+    '    Dim strErrStatus As String = ""
+    '    Dim startMotionNo(1) As Short
+    '    Dim DeviceNo As Short
+    '    Dim DeviceIP_128 As Short 'Ring0+Ring1合起來的0~127的位置中，控制器的ID
+    '    Dim DeviceIP As Short '實際控制器的ID
+    '    Dim strType As String = ""
+    '    Dim strSubType As String = ""
+
+    '    Dim bytFw(50 - 1) As Byte 'firmware versin check, byte array 
+    '    Dim strFw As String 'firmware versin check, string
+    '    Dim VerOk As New Version("1.0.4.7") '只要高於此版就ok
+    '    'Dim VerNew As Version
+    '    '=== Initial Setting ===
+    '    AMax_iniMotion = True
+    '    If amaxConfiguration.MotionNo(RingNo) = 0 Then Return True : Exit Function '如果ring裡面沒有馬達模組，則跳過initial
+
+    '    '=== Motion Module Initialization ===
+    '    For DeviceNo = 0 To amaxConfiguration.MotionNo(RingNo) - 1 '每個模組initial
+    '        DeviceIP_128 = amaxConfiguration.MotionDeviceIP_Table(RingNo * amaxConfiguration.MotionNo(0) + DeviceNo)
+    '        If amaxConfiguration.DeviceIP_Table(DeviceIP_128).iExist = 1 Then '查看此位置是否有模組
+    '            DeviceIP = DeviceIP_128 Mod 64
+    '            Call AMax_DeviceType(RingNo, DeviceIP, strType, strSubType) '確認此控制器是否為AMAX-224x
+    '            If strSubType = "AMAX224x" Then
+    '                Call B_mnet_get_fw_version(RingNo, DeviceIP, bytFw(0))
+    '                strFw = System.Text.Encoding.Default.GetString(bytFw).Replace(Chr(0), "")
+    '                'VerNew = New Version(strFw)
+    '                'remarked by Hsien , 2014.10.28
+    '                'If VerOk.CompareTo(New Version(strFw)) > 0 Then
+    '                'MsgBox("R" & RingNo.ToString & "-" & Format(DeviceIP, "00") & " 韌體版本(" & strFw & ")不合，請更新至" & VerOk.ToString)
+    '                'End If
+    '                iniStatus(RingNo, DeviceNo) = AMaxM4_Initial(RingNo, DeviceIP, strErrStatus)
+
+
+    '                If iniStatus(RingNo, DeviceNo) < 0 Then
+    '                    Call boxErrAmaxMotion(strErrStatus) ' Show Ring Error-Message-Box
+    '                    AMax_iniMotion = False
+    '                Else '=== Initialize Pulse & Interface configuration ===
+    '                    '拉到外面設定
+    '                End If
+    '            Else
+    '                MsgBox("Ring" & RingNo & ", Device" & DeviceIP & " 不為AMAX-2241!")
+    '            End If
+    '        End If
+    '    Next DeviceNo
+    'End Function
+    'Private Function AMax_CardSet(Optional ByRef strErrStatus As String = "") As Short
+    '    '-------------------------------------
+    '    ' Card initialzing fuction
+    '    ' Used by AMax_iniCard() Only , Hsien
+    '    '-------------------------------------
+    '    Static blnIntial As Boolean
+    '    If blnIntial = True Then AMax_CardSet = amaxConfiguration.AMONetCard : Exit Function ' error reject
+    '    blnIntial = True
+    '    '=== Amax Error Define ===
+    '    '
+    '    'Call ametErrorMsgDefine()
+
+    '    If amaxConfiguration.AMONetCard >= 1 Then AMax_CardSet = amaxConfiguration.AMONetCard : Exit Function ' error reject
+
+    '    '=== Initialize Amax Master Card ===
+    '    AMax_CardSet = B_mnet_initial() ' Return CardNo or Error : 1-Card
+    '    amaxConfiguration.AMONetCard = AMax_CardSet
+    '    If AMax_CardSet < 1 Then strErrStatus = "AMax Initialize Error" & Chr(13) & "AMax Master device has not found !" : Exit Function
+    'End Function
+    'Public Function AMax_RingStart(ByVal RingNo As Short,
+    '                               ByVal Baudrate As amaxBaudrate,
+    '                               ByVal RingWatchDog As Boolean,
+    '                               ByRef strErrStatus As String) As Short
+    '    Dim Status As Short, ErrIP As Short
+    '    '------------------------------------------------------------
+    '    ' Given Ring number and WatchDog switch  , start the AMO Ring
+    '    '------------------------------------------------------------
+
+    '    '=========================================
+    '    ' (0) :ERROR_NoError The API returns success
+    '    ' (-4) : ERROR_Invalid_Ring make sure the Ring is active
+    '    '=========================================
+    '    ' 1 : Soft reset ring to the initial status.
+    '    AMax_RingStart = B_mnet_reset_ring(RingNo)             '*Reset First: ERROR_Invalid_Ring make sure the Ring is active
+    '    If AMax_RingStart < 0 Then strErrStatus = strErrAmaxRing(RingNo, AMax_RingStart) : Exit Function
+
+    '    ' 2 : Buadrate mode   0: 2.5Mbps, 1: 5Mbps, 2: 10Mbps, 3: 20Mbps
+    '    If RingNo = 0 Then
+    '        'AMax_RingStart = B_mnet_set_ring_config(RingNo, 2)       'ERROR_Invalid_Ring Ring communication is not started; AMax device is not opened
+    '        AMax_RingStart = B_mnet_set_ring_config(RingNo, Baudrate)       ' follow the setup , Hsien  ,2015.02.02
+    '    Else
+    '        'AMax_RingStart = B_mnet_set_ring_config(RingNo, 2)       'ERROR_Invalid_Ring Ring communication is not started; AMax device is not opened
+    '        AMax_RingStart = B_mnet_set_ring_config(RingNo, Baudrate)       ' follow the setup , Hsien  ,2015.02.02
+    '    End If
+    '    If (AMax_RingStart < 0) Then strErrStatus = strErrAmaxRing(RingNo, AMax_RingStart) : Exit Function
+
+    '    ' 3 : Start ring communication
+    '    AMax_RingStart = B_mnet_start_ring(RingNo)
+    '    If AMax_RingStart < 0 Then strErrStatus = strErrAmaxRing(RingNo, AMax_RingStart) : Exit Function
+
+    '    If RingWatchDog = True Then
+    '        ' 4 : Enable watch dog & Set the ring continue error and error rate
+    '        AMax_RingStart = B_mnet_enable_soft_watchdog(RingNo, Nothing)       'Enable Watch Dog
+    '        If AMax_RingStart < 0 Then strErrStatus = strErrAmaxRing(RingNo, AMax_RingStart) : Exit Function
+    '        AMax_RingStart = B_mnet_set_ring_quality_param(RingNo, 50, 100)
+    '        If AMax_RingStart < 0 Then strErrStatus = strErrAmaxRing(RingNo, AMax_RingStart) : Exit Function
+    '        'Call Sleep(30) 'jk marked 因為vb2010偵測到錯誤…但不知為何…
+
+    '        ' 5 : Get the active ring status
+    '        ' ( 0 Ring Disconnected; 01 Ring Connect; 02 Slave Error; 03 Ring is Stop )
+    '        Status = B_mnet_get_com_status(RingNo)
+    '        If Status = Ring_St_Disconnected Or Status = Ring_St_Slave_Error Or Status = Ring_St_Error Then
+    '            AMax_RingStart = Status
+    '            ErrIP = B_mnet_get_error_device(RingNo)        ' Get the first error slave device
+    '            MsgBox("AMax Init Error : Communicating error or have not been connected!")
+    '            Exit Function
+    '        End If
+    '    End If
+
+    '    amaxConfiguration.RingEnabled_f(RingNo) = True
+
+    'End Function
+    '===================================================================
+    '===================================================================
+    'Public Sub AMax_Close()
+    '    With amaxConfiguration
+    '        If .AMONetCard > 0 Then
+    '            If .RingEnabled_f(0) = True Then B_mnet_stop_ring(0)
+    '            If .RingEnabled_f(1) = True Then B_mnet_stop_ring(1)
+    '            Call B_mnet_close()
+    '        End If
+    '    End With
+    'End Sub
+    'Private Function AMax_WatchDog(ByVal RingNo As Short, ByVal ErrIP As Short) As Short
+    '    '-------------------------------------
+    '    ' Card initialzing fuction
+    '    ' Used by AMax_CheckComStatus() Only , Hsien
+    '    '-------------------------------------
+
+    '    '&H0 : Ring_St_Disconnected
+    '    '&H1 : Ring_St_Connected
+    '    '&H2 : Ring_St_Slave_Error
+    '    '&H3 : Ring_St_Idle
+    '    '&H4 : Ring_St_Error
+    '    AMax_WatchDog = B_mnet_get_com_status(RingNo)
+    '    'If AMax_WatchDog = Ring_St_Disconnected Or AMax_WatchDog = Ring_St_Slave_Error Or AMax_WatchDog = Ring_St_Error Then
+    '    '    ErrIP = B_mnet_get_error_device(RingNo)
+    '    'End If
+    '    ' Taking the Disconnected number when Slave-Error happened
+    '    If AMax_WatchDog = Ring_St_Slave_Error Then ErrIP = B_mnet_get_error_device(RingNo)
+
+    'End Function
+    'Private Sub AMax_WatchDogMsg(ByVal RingNo As Short, ByVal Status As Short, ByVal ErrIP As Short, ByRef nObject As Label)
+    '    '---------------------------------
+    '    ' No any function use this , remarked Hsien 
+    '    '---------------------------------
+    '    Select Case Status
+    '        Case Ring_St_Connected '&H1
+    '            nObject.BackColor = Color.Green ' &HC000&
+    '            nObject.Text = "AMax Connected."
+    '        Case Ring_St_Disconnected '&H0
+    '            nObject.BackColor = Color.Orange  '&H80FF&
+    '            nObject.Text = "Disconnected : " & "DeviceIP " & CStr(ErrIP)
+    '        Case Ring_St_Slave_Error '&H2
+    '            nObject.BackColor = Color.Red '&HE0&
+    '            nObject.Text = "There is Slave Error Device. "
+    '        Case Ring_St_Idle '&H3
+    '            nObject.BackColor = Color.DarkRed '&H99&
+    '            nObject.Text = " Device Idle."
+    '        Case Ring_St_Error '&H4
+    '            nObject.BackColor = Color.LightGoldenrodYellow '&HFF&
+    '            nObject.Text = "There is Error Device."
+    '    End Select
+    'End Sub
+
+    'Public Function AMax_ActiveTable(ByVal RingNo As Short, ByVal DeviceIP() As Integer) As Integer
+
+    '    Static BitCount(31) As Integer, BitCount_f As Short
+    '    Dim activetable(2) As Integer
+    '    Dim i As Integer
+
+    '    '=== Count the Bit-Number ===
+    '    If BitCount_f = 0 Then
+    '        For i = 0 To 30
+    '            BitCount(i) = 2 ^ i
+    '        Next i
+    '        BitCount(31) = -2147483648.0# '為了使第31bit為1
+    '        BitCount_f = 1
+    '    End If
+    '    ' === Get the active slave table ===
+    '    'ERROR_Invalid_RingNo  make sure the ring is active
+    '    'ERROR_Invalid_TableAddr  Make sure the variable address
+    '    '(0) ERROR_NoError  The API returns success
+    '    AMax_ActiveTable = B_mnet_get_ring_active_table(RingNo, activetable(0))
+    '    If AMax_ActiveTable < 0 Then Exit Function
+    '    '=== 0 ~31 ===
+    '    For i = 0 To 31
+    '        DeviceIP(i) = (activetable(0) And BitCount(i)) / BitCount(i)
+    '    Next i
+    '    '=== 32 ~63 ===
+    '    For i = 0 To 31
+    '        DeviceIP(i + 32) = (activetable(1) And BitCount(i)) / BitCount(i)
+    '    Next i
+
+    'End Function
+    'Public Function AMax_ActiveTableDeviceIP(ByVal RingNo As Integer, ByVal DeviceIP As Integer) As Integer
+    '    Dim activetable(2) As Integer, chkNum As Long
+    '    ' === Get the active slave table ===
+    '    'ERROR_Invalid_RingNo  make sure the ring is active
+    '    'ERROR_Invalid_TableAddr  Make sure the variable address
+    '    '(0) ERROR_NoError  The API returns success
+
+    '    AMax_ActiveTableDeviceIP = B_mnet_get_ring_active_table(RingNo, activetable(0))
+    '    If AMax_ActiveTableDeviceIP < 0 Then Exit Function
+
+    '    If DeviceIP < 31 Then
+    '        chkNum = 2 ^ DeviceIP
+    '        AMax_ActiveTableDeviceIP = (activetable(0) And chkNum) / chkNum
+    '    Else
+    '        chkNum = -2147483648.0#
+    '        AMax_ActiveTableDeviceIP = Math.Abs((activetable(0) And chkNum) / chkNum)
+    '    End If
+
+    'End Function
+    'Public Sub AMax_DeviceType(ByVal RingNo As Short, ByVal DeviceIP As Short, ByRef strType As String, ByRef strSubType As String)
+    '    Dim DevType As Short
+    '    Dim SubType As Short
+    '    Dim SubPMD As Short
+    '    Dim InUse As Short
+
+    '    ' The Device IP Range : 0~63
+    '    If DeviceIP < 0 Or DeviceIP > 63 Then Exit Sub
+    '    ' Get the slave information
+    '    DevType = B_mnet_get_slave_info(RingNo, DeviceIP)
+    '    If DevType < 0 Then Exit Sub 'Error Rejection , Hsien 
+
+    '    SubType = DevType And &H8S ' bit 3         ' Low Byte
+    '    SubPMD = DevType And &H7S ' bit 0,1,2
+    '    InUse = DevType And &H80S ' bit 7 : Device in Use
+
+    '    If (InUse = 0) Then
+    '        strType = "" : strSubType = "" : Exit Sub
+    '    End If
+
+    '    'Bit 3 =>  0 : IO device 1 : motion  device
+    '    Select Case SubType
+    '        Case 0 ' Bit 0 ~ 2
+    '            strType = "IO Device"
+    '            ' you can use switch case to distinguish the I Slave type by PMD value
+    '            Select Case SubPMD
+    '                Case 0
+    '                    'strSubType = "32 OUT"
+    '                    strSubType = "AMAX2754"
+    '                Case 1
+    '                    strSubType = "8 IN/8 OUT"
+    '                Case 2
+    '                    strSubType = "16 IN/OUT"
+    '                Case 4
+    '                    'strSubType = "32 IN"
+    '                    strSubType = "AMAX2752"
+    '            End Select
+    '        Case 8 ' Bit 3
+    '            strType = "Motion  Device"
+    '            SubPMD = CShort(DevType And &H100S) / &HFFS '* High -Bit
+    '            Select Case SubPMD
+    '                Case 0
+    '                    strSubType = "1 Axis"
+    '                Case 1
+    '                    'strSubType = "4 Axis"
+    '                    strSubType = "AMAX224x"
+    '            End Select
+    '    End Select
+
+    'End Sub
+    '    Public Function AMax_Get_IO32_DeviceIP(ByVal IOtype As Short, ByVal wBitNo As Integer, ByRef RingNo As Short, ByRef DeviceIP As Short, ByRef PortNo As Short, ByRef bitValue As Integer) As Boolean
+    '        On Error GoTo ErrProc
+    '        ' IOtype : 0 for IN, 1 for OUT
+    '        ' I/O : 0~2047 for Ring0, 2048~4095 for Ring1
+    '        ' Motor : 0~63 for Ring0, 64~127 as Ring1
+    '        Const nPort = 32                    ' For 32 IN/OUT
+    '        Dim iModule As Short '第幾個輸入模組 或 第幾個輸出模組
+
+    '        iModule = wBitNo \ nPort
+
+    '        '=== Get Ring Number ===
+    '        Select Case IOtype
+    '            Case IO_IN 'input module
+    '                If amaxConfiguration.InDeviceIP_Table.GetUpperBound(0) < iModule Then
+    '                    Return False : Exit Function
+    '                End If
+    '                RingNo = amaxConfiguration.InDeviceIP_Table(iModule) \ 64
+    '                DeviceIP = amaxConfiguration.InDeviceIP_Table(iModule) Mod 64
+    '            Case IO_OUT 'output module
+    '                If amaxConfiguration.OutDeviceIP_Table.GetUpperBound(0) < iModule Then
+    '                    Return False : Exit Function
+    '                End If
+    '                RingNo = amaxConfiguration.OutDeviceIP_Table(iModule) \ 64
+    '                DeviceIP = amaxConfiguration.OutDeviceIP_Table(iModule) Mod 64
+    '        End Select
+
+    '        '=== Get Port-Number ===
+    '        PortNo = (wBitNo Mod nPort) \ 8
+    '        '=== Get Bit-Value ===
+    '        bitValue = (wBitNo Mod nPort) Mod 8   'For Bit Value
+    '        bitValue = 2 ^ bitValue
+    '        AMax_Get_IO32_DeviceIP = True
+
+    '        Exit Function
+
+    'ErrProc:
+    '        AMax_Get_IO32_DeviceIP = False
+    '    End Function
+    Public Sub AMax_Get_Moton_DeviceIP(ByVal AxisIP As Short, ByRef RingNo As Short, ByRef DeviceIP As Short, ByRef PortNo As Short)
+        'SyncLock Locking
+        ' Given AxisIP , return RingNo , DeviceIP , PortNo
+        '' Motor : 0~63 for Ring0, 64~127 as Ring1
+        RingNo = pData.MotorSettings(AxisIP).RingIndex
+        DeviceIP = pData.MotorSettings(AxisIP).DeviceIp
+        PortNo = pData.MotorSettings(AxisIP).AxisIndex
+        'End SyncLock
+    End Sub
+
+#Region "DI/DO Functions"
+    '============================================================
+    '           32 IN / 32 OUT for a I/O Device (Look-Up Table)
+    '============================================================
+    'Public Function DO_ClearAll() As Short '與之前的有何不同?
+    '    On Error Resume Next
+    '    Dim RingNo As Integer
+    '    Dim nData(64) As ULong
+    '    For RingNo = 0 To 1
+    '        If amaxConfiguration.RingEnabled_f(RingNo) = True Then
+    '            DO_ClearAll = B_mnet_io_memory_output(RingNo, nData(0))
+    '            'A.  Return >0 , means the input value. 
+    '            'B.  Return <0, means error code
+    '            DO_ClearAll = 1
+    '            If DO_ClearAll < 0 Then DO_ClearAll = 0
+    '        End If
+    '    Next
+    'End Function
+    'Public Function DI_State(ByVal wBitNo As Integer) As Boolean
+    '    'SyncLock Locking
+    '    '    Dim RingNo As Short, DeviceIP As Short, PortNo As Short, bitValue As Integer
+    '    '    Dim Result As Short
+
+    '    '    '由對照表得到Ring,DeviceIP,Prot
+    '    '    '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '    '    If AMax_Get_IO32_DeviceIP(IO_IN, wBitNo, RingNo, DeviceIP, PortNo, bitValue) = False Then
+    '    '        Return 0
+    '    '        Exit Function
+    '    '    End If
+    '    '    '=== Get Input remote port ===
+    '    '    'A.  有傳回值:Return >0 , means the input value.  
+    '    '    'B.  有錯誤發生:Return <0, means error code
+    '    '    DI_State = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '    '    If DI_State < 0 Then
+    '    '        'DI_State = 0
+    '    '        Throw New Exception("DI_State : " & CStr(wBitNo) & " Error number=" & DI_State)
+    '    '        Exit Function
+    '    '    End If
+    '    '    '=== Compare the Value and Result ===
+    '    '    '把Port的bit值取出檢查是否等於1=On
+    '    '    Result = DI_State : DI_State = 0
+    '    '    If (Result And bitValue) > 0 Then DI_State = 1
+    '    'End SyncLock
+    '    Return readBit(wBitNo)
+    'End Function
+    'Public Function DI_State_Port(ByVal bitOfPort As Integer) As Short
+    '    'Hsien , 2015.08.10 , pure api returned
+    '    ' poll a port from specific device
+    '    Dim RingNo As Short
+    '    Dim DeviceIP As Short
+    '    Dim PortNo As Short
+    '    Dim bitValue As Integer
+
+    '    Dim Result As Short
+
+    '    '由對照表得到Ring,DeviceIP,Prot
+    '    ' given bitOfPort
+    '    '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '    If AMax_Get_IO32_DeviceIP(IO_IN, bitOfPort, RingNo, DeviceIP, PortNo, bitValue) = False Then
+    '        Return 0
+    '        Exit Function
+    '    End If
+    '    '=== Get Input remote port ===
+    '    'A.  有傳回值:Return >0 , means the input value.  
+    '    'B.  有錯誤發生:Return <0, means error code
+    '    Result = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '    If Result < 0 Then
+    '        'DI_State = 0
+    '        Throw New Exception("DI_State_Port : " & CStr(bitOfPort) & " Error number=" & Result)
+    '        Exit Function
+    '    End If
+
+    '    Return Result   ' return port status
+    'End Function
+
+
+    'Public Sub DO_SetB(ByVal address As ULong) 'As Short
+
+    '    'SyncLock Locking
+    '    '    Dim RingNo As Short, DeviceIP As Short, PortNo As Short, bitValue As Integer
+    '    '    Dim Result As Short
+
+    '    '    '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '    '    Call AMax_Get_IO32_DeviceIP(IO_OUT, wBitNo, RingNo, DeviceIP, PortNo, bitValue)
+    '    '    '=== Get Input remote port ===
+    '    '    'A.  Return >0 , means the input value. 
+    '    '    'B.  Return <0, means error code
+    '    '    DO_SetB = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '    '    If DO_SetB < 0 Then
+    '    '        'MessageBox.Show("Do_SetB : " & CStr(wBitNo) & " Error number=" & DO_SetB)
+    '    '        Throw New Exception("Do_SetB : " & CStr(wBitNo) & " Error number=" & DO_SetB)   'Hsien , 2014.10.28 use exception instead
+    '    '        Exit Function
+    '    '    End If
+
+    '    '    '=== Set Output remote port ===
+    '    '    ' ERROR_NoError : 0          The API is success return
+    '    '    ' ERROR_Invalid_Ring : -4    make sure the Ring is active
+    '    '    Result = DO_SetB Or bitValue
+    '    '    DO_SetB = B_mnet_io_output(RingNo, DeviceIP, PortNo, Result)
+
+    '    'End SyncLock
+    '    DO_Write(address, True)   'as pure wrapper
+    'End Sub
+    'Public Sub DO_ClrB(ByVal address As ULong) 'As Short
+    '    '#If AMAX_CARD = 1 Then
+    '    'SyncLock Locking
+    '    '            Dim RingNo As Short, DeviceIP As Short, PortNo As Short, bitValue As Integer
+    '    '            Dim Result As Short
+
+    '    '            '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '    '            Call AMax_Get_IO32_DeviceIP(IO_OUT, wBitNo, RingNo, DeviceIP, PortNo, bitValue)
+    '    '            bitValue = &HFF - bitValue
+    '    '            '=== Get Input remote port ===
+    '    '            'A.  Return >0 , means the input value. 
+    '    '            'B.  Return <0, means error code
+    '    '            DO_ClrB = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '    '            If DO_ClrB < 0 Then
+    '    '                'MessageBox.Show("Do_ClrB : " & CStr(wBitNo) & " Error number=" & DO_ClrB)
+    '    '                Throw New Exception("Do_ClrB : " & CStr(wBitNo) & " Error number=" & DO_ClrB)   'Hsien , 2014.10.28 use exception instead
+    '    '                Exit Function
+    '    '            End If
+
+    '    '            '=== Set Output remote port ===
+    '    '            ' ERROR_NoError : 0   The API is success return
+    '    '            ' ERROR_Invalid_Ring : -4    make sure the Ring is active
+    '    '            Result = DO_ClrB And bitValue
+    '    '            DO_ClrB = B_mnet_io_output(RingNo, DeviceIP, PortNo, Result)
+    '    '        End SyncLock
+    '    '#End If
+    '    DO_Write(address, False)
+    'End Sub
+    'Public Sub DO_Write(ByVal address As ULong, value As Boolean) ' As Short
+    '    '--------------------
+    '    '   Hsien , 2014.10.14
+    '    '--------------------
+    '    'SyncLock Locking
+    '    '    Dim RingNo As Short, DeviceIP As Short, PortNo As Short, bitValue As Integer
+    '    '    Dim Result As Short
+
+    '    '    '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '    '    Call AMax_Get_IO32_DeviceIP(IO_OUT, wBitNo, RingNo, DeviceIP, PortNo, bitValue)
+    '    '    '=== Get Input remote port ===
+    '    '    'A.  Return >0 , means the input value. 
+    '    '    'B.  Return <0, means error code
+    '    '    DO_Write = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '    '    If DO_Write < 0 Then
+    '    '        'MessageBox.Show("Do_Write : " & CStr(wBitNo) & " Error number=" & DO_Write)
+    '    '        Throw New Exception("Do_Write : " & CStr(wBitNo) & " Error number=" & DO_Write)
+    '    '        Exit Function
+    '    '    End If
+
+    '    '    If (value) Then
+    '    '        'true
+    '    '        Result = DO_Write Or bitValue
+    '    '    Else
+    '    '        'false
+    '    '        'bitValue = &HFF - bitValue
+    '    '        Result = DO_Write And (Not bitValue)
+    '    '    End If
+
+
+    '    '    '=== Set Output remote port ===
+    '    '    ' ERROR_NoError : 0          The API is success return
+    '    '    ' ERROR_Invalid_Ring : -4    make sure the Ring is active
+    '    '    Return B_mnet_io_output(RingNo, DeviceIP, PortNo, Result)
+
+    '    'End SyncLock
+    '    moduleMemoryPool.writeBit(address, value)
+    '    'Return 0
+    'End Sub
+    'Sub DO_Write_Port(ByVal address As ULong, byteValue As Byte) 'As Short
+    'Hsien , 2015.08.10 , pure api returned
+    ' write a byteValue into specific port queried from bitOfPort
+
+    ''used to query corresponding Ring,Device,PortNo,bitValue
+    'Dim RingNo As Short
+    'Dim DeviceIP As Short
+    'Dim PortNo As Short
+    'Dim bitValue As Integer
+
+    '' given bitOfPort
+    ''=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    'Call AMax_Get_IO32_DeviceIP(IO_OUT, bitOfPort, RingNo, DeviceIP, PortNo, bitValue)
+    ''=== Get Input remote port ===
+    ''A.  Return >0 , means the input value. 
+    ''B.  Return <0, means error code
+
+    ''=== Set Output remote port ===
+    '' ERROR_NoError : 0          The API is success return
+    '' ERROR_Invalid_Ring : -4    make sure the Ring is active
+    'Return B_mnet_io_output(RingNo, DeviceIP, PortNo, byteValue)    'direct scan out a byte
+
+    'Dim __readoutValue As ULong = moduleMemoryPool.readWord(address)
+    '    moduleMemoryPool.writeWord(address, __readoutValue)
+
+    'End Sub
+
+
+    'Public Function DO_ReadBack(ByVal wBitNo As Integer) As Integer
+    '    SyncLock Locking
+    '        Dim RingNo As Short, DeviceIP As Short, PortNo As Short, bitValue As Integer
+    '        Dim Result As Short
+
+    '        '=== Get the RingNo, DeviceIP, PortNo and bitValue from Look-Up Table ===
+    '        Call AMax_Get_IO32_DeviceIP(IO_OUT, wBitNo, RingNo, DeviceIP, PortNo, bitValue)
+    '        '=== Get Input remote port ===
+    '        'A.  Return >0 , means the input value. 
+    '        'B.  Return <0, means error code
+    '        Result = B_mnet_io_input(RingNo, DeviceIP, PortNo)
+    '        If Result < 0 Then
+    '            Result = 0
+    '            Throw New Exception("Do_ReadBack : " & CStr(wBitNo) & " Error number=" & Result)
+    '            Exit Function
+    '        End If
+    '        '=== Compare the Value and Result ===
+    '        'Result = DO_ReadBack : DO_ReadBack = 0
+    '        If (Result And bitValue) > 0 Then
+    '            Return IS_ON
+    '        Else
+    '            Return IS_OFF
+    '        End If
+    '    End SyncLock
+    'End Function
+    'Public Sub DO_CplB(ByVal wBitNo As ULong) 'As Integer
+    '    'Change bit state , on->off , off->on
+    '    'SyncLock Locking
+    '    '    If DO_ReadBack(wBitNo) = IS_ON Then
+    '    '        Call DO_ClrB(wBitNo)
+    '    '        Return IS_OFF
+    '    '    Else
+    '    '        Call DO_SetB(wBitNo)
+    '    '        Return IS_ON
+    '    '    End If
+    '    'End SyncLock
+
+    '    moduleMemoryPool.writeBit(wBitNo, Not moduleMemoryPool.readBit(wBitNo))
+
+    'End Sub
+    '==========================================================
+#End Region
+
+    'Public Sub boxErrAmaxRing(ByVal strErrStatus As String)
+    '    Dim Msg, Style, Title, Help, Ctxt, Response
+    '    Msg = "AMax Error"                      ' 定義訊息。
+    '    Style = vbOKOnly + vbCritical       ' 定義按鈕。
+    '    Title = "AMax Ring Error"               ' 定義標題。
+    '    Help = "DEMO.HLP"                     ' 定義說明檔。
+    '    Ctxt = 1000                                    ' 定義內容代碼。
+
+    '    Response = MsgBox(strErrStatus, Style, Title)
+    'End Sub
+    'Public Function strErrAmaxRing(ByVal RingNo As Integer, ByVal Status As Integer) As String
+    '    '        strErrAmaxRing = "Ring " & CStr(RingNo) & " Error !" & Chr(13) & AlarmAmet.ErrorMsg(-Status)
+    '    strErrAmaxRing = "Ring " & CStr(RingNo) & " Error !" & Chr(13) & [Enum].GetName(GetType(returnErrorCodes), -Status)
+
+    '    If RingNo < 0 Or RingNo > 1 Then strErrAmaxRing = strErrAmaxRing & Chr(13) & "(Ring must be set 0 or 1)"
+    'End Function
+    'Public Sub Amax_CheckIO(ByVal RingNo As String, ByVal DeviceIP As String, ByVal PortNo As String, ByVal Status As Integer)
+    '    AlarmAmet.sw = True
+    '    AlarmAmet.code = -Status
+    '    AlarmAmet.RetryOnly(AlarmAmet.code) = True
+    '    Amax.strErrMsg = "I/O Com Error" & Chr(13) & "Ring : " + CStr(RingNo) & ", DeviceIP : " & CStr(DeviceIP) & ", PortNo : " & CStr(PortNo) & Chr(13) & AlarmAmet.ErrorMsg(AlarmAmet.code)
+    'End Sub
+
+    'Public Sub Amax_CheckComStatus()
+    '    '&H0 : Ring_St_Disconnected
+    '    '&H1 : Ring_St_Connected
+    '    '&H2 : Ring_St_Slave_Error
+    '    '&H3 : Ring_St_Idle
+    '    '&H4 : Ring_St_Error
+    '    Dim Status As Integer, ErrIP As Integer, RingNo As Integer
+
+    '    If AlarmAmet.sw = True And AlarmAmet.code = -ERR_Ring_St_Disconnected Then Exit Sub
+
+    '    For RingNo = 0 To 1
+    '        If Amax.RingEnabled_f(RingNo) = True Then
+    '            Status = AMax_WatchDog(RingNo, ErrIP)
+    '            If Status <> Ring_St_Connected Then  'Ring_St_Disconnected.
+    '                AlarmAmet.sw = True : AlarmAmet.code = -ERR_Ring_St_Disconnected : AlarmAmet.RetryOnly(AlarmAmet.code) = True
+    '                Amax.strErrMsg = "Amax Connection Error" & Chr(13) + "Ring : " & CStr(RingNo) & ", DeviceIP : " & CStr(ErrIP) & Chr(13) & AlarmAmet.ErrorMsg(AlarmAmet.code)
+    '                Exit Sub
+    '            End If
+    '        End If
+    '    Next RingNo
+
+    'End Sub
+
+    'Public Function standardInitialRoutine(Optional pDataFile As String = "MotionPosData.xml", Optional ByVal amaxConfigureData As String = "AmaxConfigureData.xml") As Integer
+
+
+    '    Dim fi As FileInfo = New FileInfo(My.Application.Info.DirectoryPath + "\Data\" + pDataFile)
+
+    '    If (fi.Exists) Then
+    '        OpenXmlFile(pData, My.Application.Info.DirectoryPath & "\Data\" + pDataFile) 'position data loaded
+    '    Else
+    '        MessageBox.Show(fi.FullName + "Not Found")
+    '        '-------------------------------------------------------
+    '        '   Create Default Setting Template ,  Hsien , 2015.1.11
+    '        '-------------------------------------------------------
+    '        pData.MotorSettings.Add(New amaxMotorSetting)
+    '        pData.MotorPoints.Add(New cMotorPoint)
+    '        SaveXmlFile(pData, My.Application.Info.DirectoryPath & "\Data\" + pDataFile)
+    '    End If
+
+    '    fi = New FileInfo(My.Application.Info.DirectoryPath + "\Data\" + amaxConfigureData)
+
+    '    If (fi.Exists) Then
+    '        Dim AMONetCard As Short = amaxConfiguration.AMONetCard '2015. 10.22 jk: remember is it initial ok or not
+    '        OpenXmlFile(amaxConfiguration, My.Application.Info.DirectoryPath & "\Data\" + amaxConfigureData) 'position data loaded
+    '        amaxConfiguration.AMONetCard = AMONetCard
+    '    Else
+    '        MessageBox.Show(fi.FullName + "Not Found")
+    '        SaveXmlFile(amaxConfiguration, My.Application.Info.DirectoryPath & "\Data\" + amaxConfigureData)
+    '    End If
+
+    '    'Amax = New AmonetConfiguration
+    '    amaxConfiguration.initialize()
+    '    '----------------------------------------
+    '    ' Initialzing the ring and motion module
+    '    '----------------------------------------
+    '    If (AMax_iniCard()) = True Then
+
+    '        If (AMax_iniRing(0, amaxConfiguration.Baudrate)) = True Then
+    '            Call AMax_iniMotion(0)   ' initializing the Motion modules existed in this ring
+    '        Else
+    '            Return -1   'as error code
+    '        End If
+    '        If (AMax_iniRing(1, amaxConfiguration.Baudrate)) = True Then
+    '            ' Use "Call" to distinguish function and array
+    '            Call AMax_iniMotion(1)  ' initializing the Motion modules existed in this ring
+    '        Else
+    '            Return -1   'as error code
+    '        End If
+    '    Else
+    '        '---------------
+    '        '   Card Initialization failed
+    '        '---------------
+    '        Return -1   'break
+    '    End If
+    '    pData.MotorSettings.ForEach(Sub(__setting As amaxMotorSetting) __setting.applyConfiguration())           'initializing the individual motor setting
+
+    '    Return 0
+    'End Function
+    'Public Sub standardClosingRoutine()
+    '    SaveXmlFile(pData, My.Application.Info.DirectoryPath & "\Data\" + "MotionPosData.xml")
+    '    AMax_Close()
+    'End Sub
+End Module

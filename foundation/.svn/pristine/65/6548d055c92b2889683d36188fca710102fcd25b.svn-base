@@ -1,0 +1,168 @@
+﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+Partial Class userControlLifter
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl 覆寫 Dispose 以清除元件清單。
+    <System.Diagnostics.DebuggerNonUserCode()> _
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    '為 Windows Form 設計工具的必要項
+    Private components As System.ComponentModel.IContainer
+
+    '注意:  以下為 Windows Form 設計工具所需的程序
+    '可以使用 Windows Form 設計工具進行修改。
+    '請不要使用程式碼編輯器進行修改。
+    <System.Diagnostics.DebuggerStepThrough()> _
+    Private Sub InitializeComponent()
+        Me.TextBoxStatus = New System.Windows.Forms.TextBox()
+        Me.ButtonDriveNext = New System.Windows.Forms.Button()
+        Me.ButtonDriveUnload = New System.Windows.Forms.Button()
+        Me.ButtonDriveStart = New System.Windows.Forms.Button()
+        Me.TextBoxCommandInExecute = New System.Windows.Forms.TextBox()
+        Me.Label1 = New System.Windows.Forms.Label()
+        Me.LabelCurrentIndex = New System.Windows.Forms.Label()
+        Me.LabelElapsedTime = New System.Windows.Forms.Label()
+        Me.Label3 = New System.Windows.Forms.Label()
+        Me.ButtonDriveNextUnload = New System.Windows.Forms.Button()
+        Me.ButtonDriveSynchron = New System.Windows.Forms.Button()
+        Me.SuspendLayout()
+        '
+        'TextBoxStatus
+        '
+        Me.TextBoxStatus.Location = New System.Drawing.Point(3, 90)
+        Me.TextBoxStatus.Name = "TextBoxStatus"
+        Me.TextBoxStatus.ReadOnly = True
+        Me.TextBoxStatus.Size = New System.Drawing.Size(255, 22)
+        Me.TextBoxStatus.TabIndex = 7
+        '
+        'ButtonDriveNext
+        '
+        Me.ButtonDriveNext.Location = New System.Drawing.Point(3, 32)
+        Me.ButtonDriveNext.Name = "ButtonDriveNext"
+        Me.ButtonDriveNext.Size = New System.Drawing.Size(84, 23)
+        Me.ButtonDriveNext.TabIndex = 6
+        Me.ButtonDriveNext.Text = "Drive_Next"
+        Me.ButtonDriveNext.UseVisualStyleBackColor = True
+        '
+        'ButtonDriveUnload
+        '
+        Me.ButtonDriveUnload.Location = New System.Drawing.Point(3, 61)
+        Me.ButtonDriveUnload.Name = "ButtonDriveUnload"
+        Me.ButtonDriveUnload.Size = New System.Drawing.Size(84, 23)
+        Me.ButtonDriveUnload.TabIndex = 5
+        Me.ButtonDriveUnload.Text = "Drive_Unload"
+        Me.ButtonDriveUnload.UseVisualStyleBackColor = True
+        '
+        'ButtonDriveStart
+        '
+        Me.ButtonDriveStart.Location = New System.Drawing.Point(3, 3)
+        Me.ButtonDriveStart.Name = "ButtonDriveStart"
+        Me.ButtonDriveStart.Size = New System.Drawing.Size(84, 23)
+        Me.ButtonDriveStart.TabIndex = 4
+        Me.ButtonDriveStart.Text = "Drive_Start"
+        Me.ButtonDriveStart.UseVisualStyleBackColor = True
+        '
+        'TextBoxCommandInExecute
+        '
+        Me.TextBoxCommandInExecute.Location = New System.Drawing.Point(3, 118)
+        Me.TextBoxCommandInExecute.Name = "TextBoxCommandInExecute"
+        Me.TextBoxCommandInExecute.ReadOnly = True
+        Me.TextBoxCommandInExecute.Size = New System.Drawing.Size(255, 22)
+        Me.TextBoxCommandInExecute.TabIndex = 8
+        '
+        'Label1
+        '
+        Me.Label1.AutoSize = True
+        Me.Label1.Location = New System.Drawing.Point(3, 147)
+        Me.Label1.Name = "Label1"
+        Me.Label1.Size = New System.Drawing.Size(74, 12)
+        Me.Label1.TabIndex = 9
+        Me.Label1.Text = "Current Index:"
+        '
+        'LabelCurrentIndex
+        '
+        Me.LabelCurrentIndex.AutoSize = True
+        Me.LabelCurrentIndex.Location = New System.Drawing.Point(80, 147)
+        Me.LabelCurrentIndex.Name = "LabelCurrentIndex"
+        Me.LabelCurrentIndex.Size = New System.Drawing.Size(11, 12)
+        Me.LabelCurrentIndex.TabIndex = 10
+        Me.LabelCurrentIndex.Text = "0"
+        '
+        'LabelElapsedTime
+        '
+        Me.LabelElapsedTime.AutoSize = True
+        Me.LabelElapsedTime.Location = New System.Drawing.Point(80, 159)
+        Me.LabelElapsedTime.Name = "LabelElapsedTime"
+        Me.LabelElapsedTime.Size = New System.Drawing.Size(11, 12)
+        Me.LabelElapsedTime.TabIndex = 12
+        Me.LabelElapsedTime.Text = "0"
+        '
+        'Label3
+        '
+        Me.Label3.AutoSize = True
+        Me.Label3.Location = New System.Drawing.Point(3, 159)
+        Me.Label3.Name = "Label3"
+        Me.Label3.Size = New System.Drawing.Size(71, 12)
+        Me.Label3.TabIndex = 11
+        Me.Label3.Text = "Elapsed Time:"
+        '
+        'ButtonDriveNextUnload
+        '
+        Me.ButtonDriveNextUnload.Location = New System.Drawing.Point(93, 3)
+        Me.ButtonDriveNextUnload.Name = "ButtonDriveNextUnload"
+        Me.ButtonDriveNextUnload.Size = New System.Drawing.Size(114, 23)
+        Me.ButtonDriveNextUnload.TabIndex = 13
+        Me.ButtonDriveNextUnload.Text = "Drive_Next_Unload"
+        Me.ButtonDriveNextUnload.UseVisualStyleBackColor = True
+        '
+        'ButtonDriveSynchron
+        '
+        Me.ButtonDriveSynchron.Location = New System.Drawing.Point(93, 32)
+        Me.ButtonDriveSynchron.Name = "ButtonDriveSynchron"
+        Me.ButtonDriveSynchron.Size = New System.Drawing.Size(114, 23)
+        Me.ButtonDriveSynchron.TabIndex = 14
+        Me.ButtonDriveSynchron.Text = "Drive_Synchron"
+        Me.ButtonDriveSynchron.UseVisualStyleBackColor = True
+        '
+        'userControlLifter
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 12.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.Controls.Add(Me.ButtonDriveSynchron)
+        Me.Controls.Add(Me.ButtonDriveNextUnload)
+        Me.Controls.Add(Me.LabelElapsedTime)
+        Me.Controls.Add(Me.Label3)
+        Me.Controls.Add(Me.LabelCurrentIndex)
+        Me.Controls.Add(Me.Label1)
+        Me.Controls.Add(Me.TextBoxCommandInExecute)
+        Me.Controls.Add(Me.TextBoxStatus)
+        Me.Controls.Add(Me.ButtonDriveNext)
+        Me.Controls.Add(Me.ButtonDriveUnload)
+        Me.Controls.Add(Me.ButtonDriveStart)
+        Me.Name = "userControlLifter"
+        Me.Size = New System.Drawing.Size(482, 184)
+        Me.ResumeLayout(False)
+        Me.PerformLayout()
+
+    End Sub
+    Friend WithEvents TextBoxStatus As System.Windows.Forms.TextBox
+    Friend WithEvents ButtonDriveNext As System.Windows.Forms.Button
+    Friend WithEvents ButtonDriveUnload As System.Windows.Forms.Button
+    Friend WithEvents ButtonDriveStart As System.Windows.Forms.Button
+    Friend WithEvents TextBoxCommandInExecute As System.Windows.Forms.TextBox
+    Friend WithEvents Label1 As System.Windows.Forms.Label
+    Friend WithEvents LabelCurrentIndex As System.Windows.Forms.Label
+    Friend WithEvents LabelElapsedTime As System.Windows.Forms.Label
+    Friend WithEvents Label3 As System.Windows.Forms.Label
+    Friend WithEvents ButtonDriveNextUnload As System.Windows.Forms.Button
+    Friend WithEvents ButtonDriveSynchron As System.Windows.Forms.Button
+
+End Class

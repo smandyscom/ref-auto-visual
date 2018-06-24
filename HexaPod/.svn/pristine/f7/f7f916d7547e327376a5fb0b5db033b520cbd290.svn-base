@@ -1,0 +1,816 @@
+﻿Imports System.Runtime.InteropServices
+Imports System.Threading
+Imports Automation.Components.Services
+Imports System.Windows.Forms
+Imports Automation
+Imports System.ComponentModel
+Imports SmarPodAssembly.SmarpodApiFuncs
+
+
+Public Class smarpodSetting
+    Inherits settingBase
+
+    'sensor mode
+    'pivot mode
+
+End Class
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class Smarpod
+    Inherits systemControlPrototype
+    Implements IDrivable
+
+    '''Smarpod pose property
+    Public Class podPose
+        Implements ICloneable
+
+        Public Property Px As Double
+        Public Property Py As Double
+        Public Property Pz As Double
+        Public Property Rx As Double
+        Public Property Ry As Double
+        Public Property Rz As Double
+
+        Public Function Clone() As Object Implements ICloneable.Clone
+            Return Me.MemberwiseClone()
+        End Function
+    End Class
+
+
+    Public Enum motorCommandEnum As Integer
+        NONE = 0
+        GO = 1
+        STOP_FORCELY
+
+        STOP_SLOW_DOWN
+        WAIT_RECALL
+
+
+    End Enum
+    Public Enum motionSubStateEnum
+        SETUP_AND_GO = 0
+        WAITEXECUTION
+        WAITFINEPOSITION
+    End Enum
+
+    Public Delegate Function commandFunctionPrototype(ByRef subState As Short) As IDrivable.endStatus
+    <Browsable(False)> Property CommandFunctionDictionary As Dictionary(Of [Enum], commandFunctionPrototype) = New Dictionary(Of [Enum], commandFunctionPrototype)    ' managed all command functions
+
+    Protected commandInExecute As motorCommandEnum
+    Protected commandBeforePause As motorCommandEnum          ' used to back the command in execute before motion paused 
+    Protected timeOutTimer As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(TimeSpan.TicksPerSecond * 30)}
+    Protected __commandSubState As motionSubStateEnum = motionSubStateEnum.SETUP_AND_GO ' shared by all command functions , command function should rewind this in the end of execution
+    Protected __commandEndStatus As IDrivable.endStatus = IDrivable.endStatus.EXECUTING
+    Protected __returnStatus As Integer = 0
+#Region "參數宣告"
+    ' 連線位址
+    Private _mLocator As String = "network:192.168.2.200:5000"
+    Public Property mLocator() As String
+        Get
+            mLocator = _mLocator
+        End Get
+        Set(ByVal Value As String)
+            _mLocator = Value
+        End Set
+    End Property
+    ' Model Number
+    Public _mModelNum As UInteger = 10019
+    Public Property mModelNum() As UInteger
+        Get
+            mModelNum = _mModelNum
+        End Get
+        Set(ByVal Value As UInteger)
+            _mModelNum = Value
+        End Set
+    End Property
+
+    ' 操作狀態
+    Private _mStrStatus As String = ""
+    Public Property mStrStatus() As String
+        Get
+            mStrStatus = _mStrStatus
+        End Get
+        Set(ByVal Value As String)
+            _mStrStatus = Value
+            ' RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mStrStatus"))
+        End Set
+    End Property
+
+    ' 移動狀態
+    Private _mStrMoveStatus As String = ""
+    Public Property mStrMoveStatus() As String
+        Get
+            mStrMoveStatus = _mStrMoveStatus
+        End Get
+        Set(ByVal Value As String)
+            _mStrMoveStatus = Value
+            'RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mStrMoveStatus"))
+        End Set
+    End Property
+
+    ' Move func 是否等移動結束後才return
+    Private _mbWaitForComplete As Boolean = False
+    Public Property mWaitForComplete() As Boolean
+        Get
+            mWaitForComplete = _mbWaitForComplete
+        End Get
+        Set(ByVal Value As Boolean)
+            _mbWaitForComplete = Value
+            ' RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mWaitForComplete"))
+        End Set
+    End Property
+
+    ' Move結束後的Hold time
+    Private _mHoldtime As UInteger = 1000
+    Public Property mHoldtime() As UInteger
+        Get
+            mHoldtime = _mHoldtime
+        End Get
+        Set(ByVal Value As UInteger)
+            _mHoldtime = Value
+            '  RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mHoldtime"))
+        End Set
+    End Property
+
+    ' 使用+,-函式調整target pose時每增減一次的調變值
+    Private _mLinearStep As UInteger = 1
+    Public Property mLinearStep() As UInteger
+        Get
+            mLinearStep = _mLinearStep
+        End Get
+        Set(ByVal Value As UInteger)
+            _mLinearStep = Value
+            '     RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mAdjustStep"))
+        End Set
+    End Property
+    Private _mRadianStep As UInteger = 1
+    Public Property mRadianStep() As UInteger
+        Get
+            mRadianStep = _mRadianStep
+        End Get
+        Set(ByVal Value As UInteger)
+            _mRadianStep = Value
+            '     RaiseEvent PropertyChanged(Me, New System.ComponentModel.PropertyChangedEventArgs("mAdjustStep"))
+        End Set
+    End Property
+
+    Private mStatusNum As UInteger = 0
+
+    ' 目前連線中的Smarpod ID
+    Private mSmarpodId As UInteger
+
+    Public mTargetPose As podPose = New podPose
+    Public mCurrentPose As podPose = New podPose
+
+    ' Thread
+    Private Thread_GetPose As Thread = Nothing
+    Private bThreadGetPose As Boolean = False
+
+#End Region
+
+    Sub New()
+    End Sub
+
+    ''' <summary>
+    ''' Forward Kinematic
+    ''' </summary>
+    ''' <param name="cPose"></param>
+    ''' <param name="struPose"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Function StruPoseToCPose(ByRef cPose As podPose, struPose As Smarpod_Pose) As podPose
+        cPose.Px = struPose.positionX * 1000000
+        cPose.Py = struPose.positionY * 1000000
+        cPose.Pz = struPose.positionZ * 1000000
+        cPose.Rx = struPose.rotationX
+        cPose.Ry = struPose.rotationY
+        cPose.Rz = struPose.rotationZ
+        Return cPose
+    End Function
+    ''' <summary>
+    ''' Backward Kinematic
+    ''' </summary>
+    ''' <param name="cPose"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Function CPoseToStruPose(cPose As podPose) As Smarpod_Pose
+        Dim struPose As Smarpod_Pose
+        struPose.positionX = cPose.Px / 1000000
+        struPose.positionY = cPose.Py / 1000000
+        struPose.positionZ = cPose.Pz / 1000000
+        struPose.rotationX = cPose.Rx
+        struPose.rotationY = cPose.Ry
+        struPose.rotationZ = cPose.Rz
+        Return struPose
+    End Function
+
+    Function initMappingAndSetup() As Integer
+
+        '' reflect dll info
+        Dim major As UInteger = 0
+        Dim minor As UInteger = 0
+        Dim update As UInteger = 0
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetDLLVersion(major, minor, update)
+        sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("SmarPod Version:{0},{1},{2}",
+                                                               major,
+                                                               minor,
+                                                               update))
+
+        Return 0
+    End Function
+
+    ''' <summary>
+    ''' 查詢status number表示的狀態
+    ''' </summary>
+    ''' <param name="StatusNum"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Function SearchStatusInfo(StatusNum As UInteger) As String
+        Dim intptrStatusInfo As IntPtr '= New IntPtr()
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetStatusInfo(StatusNum, intptrStatusInfo)
+        Dim strStatusInfo As String = Marshal.PtrToStringAnsi(intptrStatusInfo)
+        UpdateStatusInfo()
+        Return strStatusInfo
+    End Function
+
+    ''' <summary>
+    ''' 更新目前操作狀態
+    ''' </summary>
+    ''' <remarks></remarks>
+    Public Sub UpdateStatusInfo()
+        Dim intptrStatusInfo As IntPtr '= New IntPtr()
+        If (SmarpodApiFuncs.Smarpod_GetStatusInfo(mStatusNum, intptrStatusInfo) = 0) Then
+            Dim strStatusInfo As String = Marshal.PtrToStringAnsi(intptrStatusInfo)
+            mStrStatus = strStatusInfo
+        Else
+            mStrStatus = "Update Satus Information Error!!"
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' 列出所有Model號碼
+    ''' </summary>
+    ''' <remarks></remarks>
+    Public Sub GetModels()
+        Dim models(128) As UInteger
+        Dim listSize As UInteger = 128
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetModels(models(0), listSize)
+        UpdateStatusInfo()
+    End Sub
+
+    Public Function GetModelName(ModelNum As UInteger) As String
+        Dim intptrModelName As IntPtr '= New IntPtr()
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetModelName(ModelNum, intptrModelName)
+        UpdateStatusInfo()
+        Dim strModelName As String = Marshal.PtrToStringAnsi(intptrModelName)
+        Return strModelName
+    End Function
+
+    ''' <summary>
+    ''' 連線
+    ''' </summary>
+    ''' <param name="modelNum"></param>
+    ''' <param name="strLocator"></param>
+    ''' <returns>若連線成功則返回0</returns>
+    ''' <remarks></remarks>
+    ''' 
+    Public Function Connect(modelNum As UInteger, strLocator As String) As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_Open(mSmarpodId, modelNum, strLocator, "")
+        SmarpodApiFuncs.Smarpod_Set_ui(mSmarpodId, &H4, &H1000)
+        UpdateStatusInfo()
+        Return mStatusNum
+    End Function
+    Public Function Connect(modelNum As UInteger, strIP As String, strPort As String) As UInteger
+        ' "network:192.168.1.200:5000"
+        Dim strLocator As String = "network:" & strIP & ":" & strPort
+        mStatusNum = SmarpodApiFuncs.Smarpod_Open(mSmarpodId, modelNum, strLocator, "")
+        UpdateStatusInfo()
+        Return mStatusNum
+    End Function
+    Property XDirection As Integer
+        Set(value As Integer)
+            Dim status As Status
+            status = SmarpodApiFuncs.Smarpod_Set_d(mSmarpodId, &H4, &H1000)
+            If status <> status.SMARPOD_OK Then
+                MsgBox(String.Format("XDirection Error : {0}", [Enum].GetName(GetType(Smarpod.Status), status)))
+            End If
+        End Set
+        Get
+            Return SmarpodApiFuncs.Smarpod_Get_ui(mSmarpodId, 1002, &H1000)
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' 關閉連線
+    ''' </summary>
+    ''' <returns>若關閉成功則返回0</returns>
+    ''' <remarks></remarks>
+    Public Function Disconnect() As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_Close(mSmarpodId)
+        UpdateStatusInfo()
+        bThreadGetPose = False
+        Return mStatusNum
+    End Function
+
+    ''' <summary>
+    ''' 列出目前電腦USB連接的smarpod
+    ''' </summary>
+    ''' <remarks></remarks>
+    Public Sub FindSystems()
+        Dim outBuffer(4096) As String
+        Dim bufferSize As UInteger = outBuffer.Length
+        mStatusNum = SmarpodApiFuncs.Smarpod_FindSystems("", outBuffer(0), bufferSize)
+    End Sub
+
+    Public Property PropertyUInteger(item As PROPERTYSYMBOLS) As UInteger
+        Get
+            Dim value As UInteger = 0
+            Smarpod_Get_ui(mSmarpodId, item, value)
+            Return value
+        End Get
+        Set(ByVal value As UInteger)
+            Smarpod_Set_ui(mSmarpodId, item, value)
+        End Set
+    End Property
+
+
+    'Public Sub SetPivotMode(ByVal PivotMode As UInteger)
+    '    mStatusNum = SmarpodApiFuncs.Smarpod_Set_ui(mSmarpodId, PROPERTYSYMBOLS.SMARPOD_PIVOT_MODE, PivotMode)
+    '    UpdateStatusInfo()
+    'End Sub
+
+    'Public Function GetPivotMode() As UInteger
+    '    Dim PivotMode As UInteger
+    '    mStatusNum = SmarpodApiFuncs.Smarpod_Get_ui(mSmarpodId, PROPERTYSYMBOLS.SMARPOD_PIVOT_MODE, PivotMode)
+    '    Return PivotMode
+    'End Function
+
+    ''' <summary>
+    ''' This function may be used to activate or deactivate the sensors that are attached to the positioners of a system.
+    ''' This setting is stored to non-volatile memory of the MCS controller immediately and need not be configured on every power-up.
+    ''' </summary>
+    ''' <param name="mode"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Function SetSensorMode(mode As UInteger) As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_SetSensorMode(mSmarpodId, mode)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function GetSensorMode() As UInteger
+        Dim mode As UInteger
+        'Dim strMode As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetSensorMode(mSmarpodId, mode)
+        UpdateStatusInfo()
+        'strMode = [Enum].GetName(GetType(SENSORMODE), mode)
+        Return mode
+    End Function
+
+    Public Function SetMaxFrequency(frequency As UInteger) As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_SetMaxFrequency(mSmarpodId, frequency)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function GetMaxFrequency() As UInteger
+        Dim frequency As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetMaxFrequency(mSmarpodId, frequency)
+        UpdateStatusInfo()
+        Return frequency
+    End Function
+
+    ''' <summary>
+    ''' 設定速度
+    ''' </summary>
+    ''' <param name="speedControl"></param>speedControl = 1 速度設定才有用。speedControl = 0 時依設定的Frequency決定實際速度
+    ''' <param name="speed"></param>
+    ''' <returns></returns>
+    ''' <remarks>速度最大0.1meter/sec</remarks>
+    Public Function SetSpeed(speedControl As Integer, speed As Double) As String
+        'speed unit: meter/sec
+        'Maximum reachable speed is typically 1 to 5 mm/seconds
+        'speedControl = 0: Speed-control is disabled. The speed parameter has no effect here. The actual speed depends on 
+        'the maximum frequency which can be set with Smarpod_SetMaxFrequency. All positioners move with the same driving frequency.
+        'speedControl = 1: Speed-control is enabled. The positioners move with individual speeds to perform a smooth 
+        'movement from the start to the end pose. The speed parameter determines the speed of the fastest moving positioner.
+        mStatusNum = SmarpodApiFuncs.Smarpod_SetSpeed(mSmarpodId, speedControl, speed)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function GetSpeed() As Double()
+        Dim speed As Double
+        Dim speedControl As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetSpeed(mSmarpodId, speedControl, speed)
+        UpdateStatusInfo()
+        Return {speedControl, speed}
+    End Function
+
+    ''' <summary>
+    ''' 設定加速度
+    ''' </summary>
+    ''' <param name="accelControl"></param>
+    ''' <param name="acceleration"></param>
+    ''' <returns></returns>
+    ''' <remarks>加速度最大10meter/sec^2</remarks>
+    Public Function SetAcceleration(accelControl As Integer, acceleration As Double) As String
+        'acceleration unit: meter/sec2
+        'If speed-control is disabled the acceleration settings have no effect.
+        mStatusNum = SmarpodApiFuncs.Smarpod_SetAcceleration(mSmarpodId, accelControl, acceleration)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function GetAcceleration() As Double()
+        Dim acceleration As Double
+        Dim accelControl As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetAcceleration(mSmarpodId, accelControl, acceleration)
+        UpdateStatusInfo()
+        Return {accelControl, acceleration}
+    End Function
+
+    Public Function FindReferenceMarks() As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_FindReferenceMarks(mSmarpodId)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function Calibrate() As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_Calibrate(mSmarpodId)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function IsReferenced() As Integer
+        '0: not referenced, 1: referenced.
+        Dim referenced As Integer = 0
+        mStatusNum = SmarpodApiFuncs.Smarpod_IsReferenced(mSmarpodId, referenced)
+        UpdateStatusInfo()
+        Return referenced
+    End Function
+
+    Public Function SetPivot(px As Double, py As Double, pz As Double) As String
+        Dim pivot(2) As Double
+        'unit: meter
+        'pivot(2):(Px,Py,Pz)
+        pivot = {px, py, pz}
+        mStatusNum = SmarpodApiFuncs.Smarpod_SetPivot(mSmarpodId, pivot(0))
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function GetPivot() As Double()
+        'unit: meter
+        'pivot(2):(Px,Py,Pz)
+        Dim pivot(2) As Double
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetPivot(mSmarpodId, pivot(0))
+        UpdateStatusInfo()
+        Return pivot
+    End Function
+
+    Public Function IsPoseReachable(pose As Smarpod_Pose) As Integer
+        Dim reachable As Integer = 0    '0: the pose cannot be reached, 1: the pose can be reached by the SmarPod.
+        mStatusNum = SmarpodApiFuncs.Smarpod_IsPoseReachable(mSmarpodId, pose, reachable)
+        UpdateStatusInfo()
+        Return reachable
+    End Function
+
+    Public Function IsPoseReachable() As Integer
+        Dim reachable As Integer = 0    '0: the pose cannot be reached, 1: the pose can be reached by the SmarPod.
+        mStatusNum = SmarpodApiFuncs.Smarpod_IsPoseReachable(mSmarpodId, CPoseToStruPose(mTargetPose), reachable)
+        UpdateStatusInfo()
+        Return reachable
+    End Function
+
+    Public Sub GetPose()
+        Dim pose As Smarpod_Pose
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetPose(mSmarpodId, pose)
+        UpdateStatusInfo()
+        StruPoseToCPose(mCurrentPose, pose)
+    End Sub
+
+    ''' <summary>
+    ''' Thread用(不改變mStrStatus)
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub GetPoseContinuously()
+        Dim pose As Smarpod_Pose
+        SmarpodApiFuncs.Smarpod_GetPose(mSmarpodId, pose)
+        StruPoseToCPose(mCurrentPose, pose)
+    End Sub
+    Public Function GetMoveStatus() As SmarpodApiFuncs.MOVESTATUS
+        Dim statusNum As UInteger = 99
+        mStatusNum = SmarpodApiFuncs.Smarpod_GetMoveStatus(mSmarpodId, statusNum)
+        UpdateStatusInfo()
+        Return mStatusNum
+    End Function
+    ''' <summary>
+    ''' Thread用(不改變mStrStatus)
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Private Function GetMoveStatusContinuously() As String
+        Dim statusNum As UInteger = 99
+        SmarpodApiFuncs.Smarpod_GetMoveStatus(mSmarpodId, statusNum)
+        mStrMoveStatus = [Enum].GetName(GetType(SmarpodApiFuncs.MOVESTATUS), statusNum)
+        Return mStrMoveStatus
+    End Function
+
+    Public Function Move(pose As Smarpod_Pose, holdTime As UInteger, waitForCompletion As Integer) As String
+        ' pose: meters, degrees
+        ' holdTime: milliseconds
+        ' waitForCompletion 1: the function does not return until all positioners have stopped moving. 
+        '                   0: the function returns immediately.
+        ' max: 1mm, 10deg
+        mStatusNum = SmarpodApiFuncs.Smarpod_Move(mSmarpodId, pose, holdTime, waitForCompletion)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+    Public Function Move(holdTime As UInteger, waitForCompletion As Integer) As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_Move(mSmarpodId, CPoseToStruPose(mTargetPose), holdTime, waitForCompletion)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+    Public Function Move() As Status
+        mStatusNum = SmarpodApiFuncs.Smarpod_Move(mSmarpodId, CPoseToStruPose(mTargetPose), mHoldtime, mWaitForComplete)
+        UpdateStatusInfo()
+        Return mStatusNum
+    End Function
+
+    Public Function MoveStop() As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_Stop(mSmarpodId)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+
+    Public Function StopAndHold(holdTime As UInteger) As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_StopAndHold(mSmarpodId, holdTime)
+        UpdateStatusInfo()
+        Return mStrStatus
+    End Function
+    Public Function Stop_() As UInteger
+        mStatusNum = SmarpodApiFuncs.Smarpod_Stop(mSmarpodId)
+        Return mStatusNum
+    End Function
+
+
+
+
+    ''' <summary>
+    ''' 確認是否連線
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public ReadOnly Property IsConnected() As Boolean
+        Get
+            Dim referenced As Integer = 0
+            mStatusNum = SmarpodApiFuncs.Smarpod_IsReferenced(mSmarpodId, referenced)
+            If mStatusNum = 0 Then
+                Return True
+            Else
+                Return False
+            End If
+        End Get
+    End Property
+
+
+
+    ''' <summary>
+    ''' Thread 更新Current Pose
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub GetPoseAndStatusThread()
+        While bThreadGetPose
+            GetPoseContinuously()
+            GetMoveStatusContinuously()
+            Thread.Sleep(200)
+        End While
+    End Sub
+
+    Public Sub StartGetStautsThread()
+        Thread_GetPose = New Thread(New ThreadStart(AddressOf GetPoseAndStatusThread))
+        bThreadGetPose = True
+        Thread_GetPose.Start()
+    End Sub
+
+    Public Sub StopGetStatusThread()
+        bThreadGetPose = False
+    End Sub
+
+    Public Sub StepIncrease(axis As String, symbol As String)
+        Select Case symbol
+            Case "+"
+                Select Case axis
+                    Case "Px"
+                        mTargetPose.Px += mLinearStep
+                    Case "Py"
+                        mTargetPose.Py += mLinearStep
+                    Case "Pz"
+                        mTargetPose.Pz += mLinearStep
+                    Case "Rx"
+                        mTargetPose.Rx += mRadianStep
+                    Case "Ry"
+                        mTargetPose.Ry += mRadianStep
+                    Case "Rz"
+                        mTargetPose.Rz += mRadianStep
+                End Select
+            Case "-"
+                Select Case axis
+                    Case "Px"
+                        mTargetPose.Px -= mLinearStep
+                    Case "Py"
+                        mTargetPose.Py -= mLinearStep
+                    Case "Pz"
+                        mTargetPose.Pz -= mLinearStep
+                    Case "Rx"
+                        mTargetPose.Rx -= mRadianStep
+                    Case "Ry"
+                        mTargetPose.Ry -= mRadianStep
+                    Case "Rz"
+                        mTargetPose.Rz -= mRadianStep
+                End Select
+        End Select
+
+    End Sub
+    Public Overrides Function raisingGUI() As Control
+        Dim uc As userControlSmarPod = New userControlSmarPod
+        With uc
+            ._smarPod = Me
+            .PropertyView = New userControlPropertyView With {.Drive = Me}
+            '.Dock = DockStyle.Fill
+        End With
+        Return uc
+    End Function
+
+    Public ReadOnly Property CommandDrivenState As IDrivable.drivenState Implements IDrivable.CommandDrivenState
+        Get
+
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandEndStatus As IDrivable.endStatus Implements IDrivable.CommandEndStatus
+        Get
+
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandInExecute As Object Implements IDrivable.CommandInExecute
+        Get
+
+        End Get
+    End Property
+    Private Function driveIDrivable(command As [Enum], Optional __arg As Object = Nothing) As IDrivable.endStatus Implements IDrivable.drive
+        Return drive(command)
+    End Function
+    Public Function drive(ByVal command As motorCommandEnum, ByVal globalCommandPosition As Smarpod_Pose) As IDrivable.endStatus
+        If (commandInExecute.Equals(motorCommandEnum.NONE)) Then
+            'avoid to corrupt the thread-shared data structure - pointTable , Hsien , 2016.02.15
+            PositionPoint = globalCommandPosition
+        End If
+        Return drive(command)
+    End Function
+    Public Function drive(ByVal command As motorCommandEnum, Optional ByVal commandPosition As [Enum] = Nothing) As IDrivable.endStatus
+        '-------------------------------------------------------------
+        '   when command UNDETERMINED , will do initializing procedure
+        '-------------------------------------------------------------
+        ' first priority command : STOP_FORCELY
+        If (command.Equals(motorCommandEnum.STOP_FORCELY)) Then
+            '-----------------------------
+            ' highest priority command
+            'direct firing command
+            '------------------------------
+            timeOutTimer.IsEnabled = False
+            __commandSubState = motionSubStateEnum.SETUP_AND_GO
+            __commandEndStatus = IDrivable.endStatus.EXECUTION_END
+            commandInExecute = motorCommandEnum.NONE
+
+            'Slow down stop need time to down , have to use drive-command sequence control
+            __returnStatus = Soft_Emg_Stop()
+
+            '----------------
+            '   Wait until motor stopped
+            '----------------
+            While (CommandInCycle() <> False)
+                'do nothing, waitting all stopped
+            End While
+
+            'reset error status
+            '__returnStatus = AMaxM4_ErrorStatus(MotorIndex, __errorStatus)
+
+            Return IDrivable.endStatus.EXECUTION_END
+
+        End If
+
+        '------------------------
+        '   STOP SLOWLY , Hsien  2015.01.10
+        '-------------------------
+        If (command.Equals(motorCommandEnum.STOP_SLOW_DOWN) AndAlso
+            (Not commandInExecute.Equals(motorCommandEnum.STOP_SLOW_DOWN)) AndAlso
+            (Not commandInExecute.Equals(motorCommandEnum.WAIT_RECALL))) Then
+            '-----------------------------
+            ' high priority command ,would override previous in-execute command
+            '------------------------------
+            resetCommand()
+            commandInExecute = motorCommandEnum.STOP_SLOW_DOWN
+            timeOutTimer.IsEnabled = True
+            Return IDrivable.endStatus.EXECUTING
+        End If
+
+
+        ' when command is executed to the end , do not accecpt next command 
+        ' caller should determine if recall by recognizing return states in this device
+        If (commandInExecute.Equals(motorCommandEnum.WAIT_RECALL)) Then
+            '----------------------------------
+            ' last command had been executed
+            '   1. rewind execution status
+            '   2. return the execution result 
+            '----------------------------------
+            commandInExecute = motorCommandEnum.NONE
+            Return __commandEndStatus
+        End If
+
+        If (Not commandInExecute.Equals(motorCommandEnum.NONE)) Then
+            ' command on execute , reject command override
+        Else
+            If (commandPosition IsNot Nothing) Then
+                '----------------------------------------------------------------
+                'Hsien , 2014.11.14
+                'point indicated , fetch point data from pData tank
+                '----------------------------------------------------------------
+
+                Try
+                    PositionPoint = GetPoint(Convert.ToInt32(commandPosition))
+                Catch ex As Exception
+                    '---------------------------------
+                    '   Key Not Found , Reject Command
+                    '---------------------------------
+                    ' raising alarm : exception
+                    __returnStatus = returnErrorCodes.ERR_No_Assigning_Point
+                    alarmPackage.AdditionalInfo = String.Format("Scara Error!{0}Error Code={1}{0}Error Message={2}", vbNewLine, __returnStatus, [Enum].GetName(GetType(returnErrorCodes), __returnStatus))
+                    CentralAlarmObject.raisingAlarm(alarmPackage)
+                    Return IDrivable.endStatus.EXECUTION_END_FAIL
+                End Try
+            Else
+                '----------------------------------------------------------------
+                'Hsien , 2014.11.14
+                '   No corresponding point indicated , use  positionPoint instead
+                '   if positionPoint not assigned , motor would generate error when executing
+                '----------------------------------------------------------------
+            End If
+
+            timeOutTimer.IsEnabled = True   'start time out checking for all command , Hsien , 2014.10.09
+            commandInExecute = command
+
+        End If
+
+        Return IDrivable.endStatus.EXECUTING
+
+    End Function
+    Protected Function Soft_Emg_Stop() As Integer
+        'todo code it later...
+        Return 0
+    End Function
+    Protected Function CommandInCycle() As Boolean
+        Dim status As SmarpodApiFuncs.MOVESTATUS
+        SmarpodApiFuncs.Smarpod_GetMoveStatus(mSmarpodId, status)
+        If status = SmarpodApiFuncs.MOVESTATUS.SMARPOD_STOPPED Then Return False Else Return True
+
+    End Function
+
+    Public Function getCommands() As ICollection Implements IDrivable.getCommands
+
+    End Function
+
+    Public Property TimeoutLimit As TimeSpan Implements IDrivable.TimeoutLimit
+    Property PositionPoint As Smarpod_Pose 'Hsien , 2015.12.21, used when single position moving going to execute
+        Get
+            If PointTable.Count = 0 Then
+                Return Nothing
+            End If
+
+            Return __pointTable.First
+        End Get
+        Set(value As Smarpod_Pose)
+            __pointTable.Clear()
+            __pointTable.Add(value)
+        End Set
+    End Property
+    ReadOnly Property PointTable As List(Of Smarpod_Pose) ' = New List(Of cMotorPoint)   'inject the MotorPoints as simultanous commands
+        Get
+            Return __pointTable
+        End Get
+        'Set(value As List(Of cMotorPoint))
+        '    __pointTable = value
+        'End Set
+    End Property
+
+    Public ReadOnly Property CommandInExecute1 As Object Implements IDrivable.CommandInExecute
+        Get
+
+        End Get
+    End Property
+End Class

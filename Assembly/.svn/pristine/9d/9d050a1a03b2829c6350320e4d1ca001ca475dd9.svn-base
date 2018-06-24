@@ -1,0 +1,54 @@
+﻿Imports AutoNumeric
+Imports System.Xml.Serialization
+
+''' <summary>
+''' Singleton
+''' C4->Y0REAL
+''' </summary>
+''' <remarks></remarks>
+Public Class c4htm
+    Inherits htmEdgeElementary
+
+    ''' <summary>
+    ''' The Ay Control Value From Zero Point
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    <XmlIgnore()>
+    Property AyFromHome As Double
+        Get
+            Return __ayFromHome
+        End Get
+        Set(value As Double)
+            __ayFromHome = value
+            'update
+            __matrixCore(0, 3) = value + HomeOffset
+        End Set
+    End Property
+    Dim __ayFromHome As Double = 0
+
+    ''' <summary>
+    ''' Need to be stored
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property HomeOffset As Double = 0
+
+    Protected Sub New()
+        MyBase.New(framesDefinition.C4,
+                   framesDefinition.Y0REAL)
+    End Sub
+
+    Shared __reference As c4htm = Nothing
+    Public Shared ReadOnly Property Instance As c4htm
+        Get
+            If __reference Is Nothing Then
+                __reference = New c4htm
+            End If
+            Return __reference
+        End Get
+    End Property
+
+End Class

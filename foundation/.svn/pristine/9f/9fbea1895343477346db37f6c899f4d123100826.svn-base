@@ -1,0 +1,618 @@
+﻿Imports Automation.Components.CommandStateMachine
+Imports Automation.Components.Services
+Imports System.IO
+Imports System.Reflection
+Imports System.Text
+
+
+Public Class transporterBase
+    Inherits shiftingModel
+    Implements IChainSynchronizable
+    '---------------------------------------------------------------------------------------
+    '---------------------------------------------------------------------------------------
+    Public Enum positions
+        SEND_STEP      'the teached point for sending a tray out
+        RECEIVE_STEP
+    End Enum
+
+    Public Enum startupFlagsEnum
+        ABLE_IGNITE             ' first time : on igniting , off ignite over , able to launch , second time : used to synchron with other transporter
+        ABLE_LAUNCH   'used to signal the assembly , this station had make sure if tray existed
+    End Enum
+
+
+    ReadOnly Property IsTrayOccupied As Boolean
+        Get
+            Return __occupiedStatus.DataCollection.First.IsPositionOccupied
+        End Get
+    End Property
+    'Reflect more infos , Hsien , 2015.07.28
+    ReadOnly Property ProcessState As Integer
+        Get
+            Return __processState
+        End Get
+    End Property
+    ReadOnly Property CurrentTransferProcess As String
+        Get
+            Return currentProcess.ToString
+        End Get
+    End Property
+
+    Public startupFlags As flagController(Of startupFlagsEnum) = New flagController(Of startupFlagsEnum)    'used to control start procedure
+#Region "basic control members"
+    Public transportMotor As motorControl = New motorControl With {.IsEnabled = True}
+    Public sendoutSensor As sensorControl = New sensorControl
+    Public existedSensor As sensorControl = New sensorControl   'hsien 03.26
+#End Region
+
+    '---------------------------------------------------------------
+    '   Used in PECVD , down-layer stations(A5,A6) , which doing asynchron receiving-sending process
+    '----------------------------------------------------------------
+    Protected Function upstreamTransporter() As transporterBase
+        Return DirectCast(UpstreamNode, transporterBase)
+    End Function
+    Public Property UpstreamNode As IChainSynchronizable Implements IChainSynchronizable.NeighborNode
+    Public Property ReadyToSendOut As flagController(Of IChainSynchronizable.synchronizingFlagsEnum) Implements IChainSynchronizable.SynchronFlags
+    '---------------------------------------------------------------
+    '   SychronFlags definitions:
+    '   Value   | On Moving/Not |   Meaning
+    '   0           0               start to send
+    '   0           1               resume sending
+    '   1           0               ready to send , wait pull-down
+    '   1           1               on sending
+    '------------------------------------------------
+    '   Used to decide which process going to execute
+    '------------------------------------------------
+
+    Protected __processState As Integer = 0
+    Public preSendProcess As stateFunction = Function() (True)
+    Public preReceiveProcess As stateFunction = Function() (True)
+
+    Public sendProcess As stateFunction = Function() (True)
+    Public receiveProcess As stateFunction = Function() (True)
+
+    Public isSendedOutDone As Func(Of Boolean) = Function() (True)    'used to judgement whether sending process had done
+    Public isSendedOutFailed As Func(Of Boolean) = Function() (False)    'used to judgement whether sendout process failed , especilly on the fly process
+    Public alarmPackSendoutFailed As alarmContextBase = New alarmContentSensor   'raise when send out failed
+    Public alarmPackSlowdownAbnormal As alarmContextBase = New alarmContextBase With {.Sender = Me,
+                                                                                      .AdditionalInfo = "PLC-Slowdown信號異常，請確認"}
+    'raise when on the beginning of the fly send , Hsien  ,2015.07.09
+    Protected isUpstreamTriggered As Boolean = False
+    Protected currentProcess As stateFunction = Function() (True)
+
+    'alias
+    Public Function TrayInfo() As trayDataBase
+        Return CType(__occupiedStatus.DataCollection.First, trayDataBase)
+    End Function
+
+    Protected Overrides Function dataVerifyAction() As Boolean
+        '----------------------------------------------
+        '   Verify if tray received/sended successfully
+        '----------------------------------------------
+        Return checkWaferCoverLossAndUnknown()  ' check if position occupied
+    End Function
+
+    Protected Overrides Function isAbleTransfer() As Boolean
+        Select Case actionState
+            Case 0
+                isUpstreamTriggered = False ' reset the state
+                ReadyToSendOut.resetFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)  'reset the flag
+
+                If (__occupiedStatus.DataCollection.First.IsPositionOccupied) Then
+                    '----------------------------------------------------------------------
+                    '   The last position had occupied , need to synchron with next station
+                    '----------------------------------------------------------------------
+                    actionState = 10
+                Else
+                    actionState = 200
+                End If
+                '--------------------------------------------
+                '   Prepare for sendProcess
+                '--------------------------------------------
+            Case 10
+                If (preSendProcess(__processState)) Then
+                    currentProcess = sendProcess
+                    __processState = 0
+                    actionState = 100
+                End If
+            Case 100
+                '-----------------------------------------------------------------
+                '   Wait until synchronized ( Be pull down by Downstream Station)
+                '-----------------------------------------------------------------
+                '-----------------------------------
+                'Hsien , 2015.04.07 , offline debugging : should raise flag in transfer-process , so that process would be protect from alarm intertupting
+                '-----------------------------------
+                '-------------------------------------------------------------
+                '   SLAVE MODE , take Upstream together if need
+                '-------------------------------------------------------------
+                If (transportMotor IsNot Nothing) Then
+                    AMaxM4_CmdPos_Reset(transportMotor.MotorIndex)  'hsien , 2015.04.09 , reset postion at every beginning of transporting
+                End If
+                Return True     'move for sending
+                '--------------------------------------------
+                '   Prepare for receiveProcess
+                '--------------------------------------------
+            Case 200
+                If (preReceiveProcess(__processState)) Then
+                    currentProcess = receiveProcess
+                    __processState = 0
+                    actionState = 210
+                End If
+            Case 210
+                '----------------------------------------------------------------------
+                '   This station had capability to load 
+                '   Wait until Upstream station ready
+                '----------------------------------------------------------------------
+                If (upstreamTransporter() IsNot Nothing AndAlso
+                    upstreamTransporter.ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    '----------------------------------------------------------------------
+                    '  MASTER MODE (Pull the upstream)
+                    '----------------------------------------------------------------------
+                    If (transportMotor IsNot Nothing) Then
+                        AMaxM4_CmdPos_Reset(transportMotor.MotorIndex)  'hsien , 2015.04.09 , reset postion at every beginning of transporting
+                    End If
+                    Return True 'move for receiving
+                End If
+        End Select
+
+        Return False    'cannot transfer
+
+    End Function
+    Protected Overrides Function transferProcess() As Boolean
+        Return currentProcess(actionState)
+    End Function
+
+    Dim alarmCondition As Boolean = False
+    Protected Overrides Function process() As Integer
+        '----------------------------
+        'standard system control flow
+        '----------------------------
+        drivesRunningInvoke()
+        '-------------------------------------------
+        '   Could not interrupted by others during transfering
+        '   Should stop control flow when self alarm raised
+        ' R = alarmCondition or pauseCondition
+        ' pause condition : paused and not in transfering state
+        ' alarm condition : alarmed and (myalarm or (otheralarm  and not in transfering state)) 
+        '-------------------------------------------
+        alarmCondition =
+            CentralAlarmObject.IsAlarmed AndAlso ((IsMyAlarmInQueue Or IsMyAlarmCurrent))   'dont affect by alarm other than mine , Hsien  2015.10.15
+
+        If (alarmCondition OrElse
+            (PauseBlock.IsPaused AndAlso ShiftState <> shiftingStates.TRANSFERING)) Then
+            Return 0
+        End If
+
+
+        stateControl()
+        processProgress()
+
+        Return 0
+    End Function
+
+    
+    Protected Overridable Function stateIgnite() As Integer
+        Select Case systemSubState
+            Case 0
+                If (startupFlags.viewFlag(startupFlagsEnum.ABLE_IGNITE)) Then
+                    systemSubState = 10
+                End If
+            Case 10
+                If (dataInitialProcess(__processState)) Then
+                    __processState = 0
+                    startupFlags.resetFlag(startupFlagsEnum.ABLE_IGNITE)
+
+                    systemMainState = systemStatesEnum.EXECUTE
+
+                    'systemSubState = 20
+                End If
+                'Case 20
+                '    If (startupFlags.readFlag(startupFlagsEnum.ABLE_IGNITE)) Then
+                '        systemMainState = systemStatesEnum.EXECUTE
+                '    End If
+                'Case Else
+
+        End Select
+
+        Return 0
+
+    End Function
+
+
+
+#Region " transporting processes"
+    '---------------------------------------
+    '   Selecting the skeleton on derived type
+    '---------------------------------------
+    Public Overridable Function regularSendProcess(ByRef state As Integer) As Boolean
+        '----------------------------------
+        '   Doing sendonly , able to pause/resume by downStream
+        '----------------------------------
+        Select Case state
+            Case 0
+                ReadyToSendOut.setFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+                state = 10
+            Case 10
+                If (Not ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    state = 20  'down stream had trigger to move
+                End If
+                '-------------------------
+                '   Start movement
+                '-------------------------  
+            Case 20
+                Dim __temp = transportMotor.CommandEndStatus   'read out and clear status , hsien , 2015.03.25 
+                transportMotor.drive(motorControl.motorCommandEnum.GO_POSITION, positions.SEND_STEP)
+                state = 30
+            Case 30
+                If (ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    '---------------------------------------------
+                    '   Down stream informed jammed , pause motion
+                    '---------------------------------------------
+                    transportMotor.drive(motorControl.motorCommandEnum.MOTION_PAUSE)    'especailly for unloading tray , hsien ,2015.04.07
+                    state = 100
+                ElseIf (isSendedOutDone()) Then
+                    '----------------------------
+                    '   Check if sending had done
+                    '---------------------------
+                    state = 200
+                End If
+            Case 100
+                '-----------------------------
+                '   Wait until process resumed
+                '-----------------------------
+                If (Not ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    transportMotor.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+                    state = 10
+                End If
+            Case 200
+                'redundant command to make sure motor stopped correctly
+                If (transportMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                    motorControl.statusEnum.EXECUTION_END) Then
+                    'make sure motor had stopped
+
+                    CType(IncomingShiftData, trayDataBase).clearAllOccuipedStatus()    'hsien , 2015.04.14
+                    Me.IncomingShiftData.IsPositionOccupied = False 'regular sendout process , nothing going to enqueue , hsien , 2015.03.26
+                    Return True 'process finished
+                End If
+        End Select
+
+        Return False
+    End Function
+    Public Overridable Function regularReceiveProcess(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                '------------------------------------
+                'Do Data Copy to Incoming data from the last position of upstream node
+                '-------------------------------------
+                If (Not isUpstreamTriggered) Then
+                    IncomingShiftData.Assign(upstreamTransporter.OccupiedStatus.DataCollection.First)     'value assignment from uptream-node
+                    UpstreamNode.SynchronFlags.resetFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)  'pull the upstream moving
+                    isUpstreamTriggered = True
+                End If
+
+                With transportMotor
+                    Dim __status = .CommandEndStatus
+
+                    .SlowdownEnable = enableEnum.ENABLE
+                    .AcceptableErrorStatus = errorStatusEnum.STOPPED_SD_ON Or errorStatusEnum.NO_ERROR
+                    .drive(motorControl.motorCommandEnum.GO_POSITION, positions.RECEIVE_STEP) 'command would be reject , if this command come after send_step
+
+                End With
+
+                state = 10
+            Case 10
+                With transportMotor
+
+                    'If (upstreamTransporter.ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    '    'upstream jammed
+                    '    .drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+                    '    state = 100
+
+                    If (.CommandEndStatus = motorControl.statusEnum.EXECUTION_END) Then
+                        .SlowdownEnable = enableEnum.DISABLE
+                        .AcceptableErrorStatus = errorStatusEnum.NO_ERROR
+
+                        IncomingShiftData.IsPositionOccupied = True 'Hsien ,2015.04.07 , data must be verify
+
+                        Return True ' process finished
+                    ElseIf (False) Then
+
+                        'todo , once receiving jammed , pause the upstream
+                        'With upstreamTransporter()
+                        '    If (.ShiftState = shiftingStates.TRANSFERING AndAlso
+                        '        .currentProcess.Equals(upstreamTransporter.sendProcess)) Then
+                        '        .ReadyToSendOut.setFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)   'pause the upstream
+                        '    End If
+
+                        'End With
+
+                    End If
+
+                End With
+
+                'Case 100
+                '    '------------------------
+                '    '   Wait for resume
+                '    '-------------------------
+                '    If (Not UpstreamNode.SynchronFlags.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                '        transportMotor.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+                '        state = 10
+                '    End If
+            Case Else
+
+        End Select
+
+
+        Return False
+    End Function
+    Public Function ontheflySendProcess(ByRef state As Integer) As Boolean
+        '--------------------------
+        '   Doing send/receive simultanously
+        '--------------------------
+        Select Case state
+            Case 0
+                '----------------------------------------------
+                '   Make sure SD had been off , Hsien , 2015.04.16
+                '----------------------------------------------
+                Dim __status As Integer = 0
+                Dim __returnStatus As Short = AMaxM4_ioSD(transportMotor.MotorIndex, __status)
+                If (__returnStatus = returnErrorCodes.ERR_NoError AndAlso __status = IS_OFF) Then
+                    sendMessage(internalEnum.GENERIC_MESSAGE, "On the fly send , SD off")
+                    state = 1
+                Else
+                    'sendMessageTimed("On the fly send , SD on/Amax Error")
+                    CentralAlarmObject.raisingAlarm(alarmPackSlowdownAbnormal)  'Hsien , 2015.07.09
+                    'state = 1
+                End If
+            Case 1
+                ReadyToSendOut.setFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+                state = 10
+            Case 10
+                If (Not ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    state = 20
+                End If
+                '----------------------------
+                '   Start movement
+                '----------------------------
+            Case 20
+                Dim __temp = transportMotor.CommandEndStatus
+                transportMotor.SlowdownEnable = enableEnum.ENABLE   'sd should enabled before move
+                transportMotor.drive(motorControl.motorCommandEnum.GO_POSITION, positions.SEND_STEP)
+
+                sendMessage(internalEnum.GENERIC_MESSAGE, "On the fly send : motor started")  'Hsien , 2015.04.16
+
+                state = 30
+            Case 30
+                '--------------------------------------
+                '   Take upstream go together , if need
+                '--------------------------------------
+                If (upstreamTransporter.ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST) And
+                    Not isUpstreamTriggered) Then
+
+                    IncomingShiftData.Assign(upstreamTransporter.OccupiedStatus.DataCollection.First)   'data copy
+                    upstreamTransporter.ReadyToSendOut.resetFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)  'trigger the upstream
+
+                    isUpstreamTriggered = True  'memorize
+                End If
+
+                If (ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    '------------------------------------
+                    '   Down stream jammed , pause motion
+                    '------------------------------------
+                    transportMotor.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+
+                    'pause the upstream as well
+                    If (isUpstreamTriggered) Then
+                        UpstreamNode.SynchronFlags.setFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+                    End If
+
+                    state = 100
+                ElseIf (isSendedOutFailed()) Then
+                    '-----------------------------
+                    'handle send out failed
+                    'pause upstream , stopped until condition passed
+                    '-----------------------------
+                    transportMotor.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+
+                    'pause the upstream as well
+                    If (isUpstreamTriggered) Then
+                        UpstreamNode.SynchronFlags.setFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+                    End If
+
+                    CentralAlarmObject.raisingAlarm(alarmPackSendoutFailed)
+                ElseIf (isSendedOutDone()) Then
+                    '----------------------------
+                    '   Check if sending had done
+                    '---------------------------
+                    state = 200
+                End If
+
+            Case 100
+                '-----------------------------
+                '   Wait until process resumed
+                '-----------------------------
+                If (Not ReadyToSendOut.viewFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+
+                    transportMotor.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+                    If (isUpstreamTriggered) Then
+                        UpstreamNode.SynchronFlags.resetFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+                    End If
+
+                    state = 10
+                End If
+            Case 200
+                If (isUpstreamTriggered) Then
+                    '----------------------------------
+                    '   Continued the receiving process
+                    '----------------------------------
+                    state = 0 'rewind for receiving process
+                    currentProcess = receiveProcess   'continued with receiveProcess
+                Else
+                    '----------------------------------
+                    '   Sending only , drive motor stop
+                    '----------------------------------
+                    If (transportMotor.drive(motorControl.motorCommandEnum.STOP_SLOW_DOWN) =
+                        motorControl.statusEnum.EXECUTION_END) Then
+                        transportMotor.SlowdownEnable = enableEnum.DISABLE  'pair match
+
+                        CType(IncomingShiftData, trayDataBase).clearAllOccuipedStatus()    'Hsien , 2015.04.14
+                        IncomingShiftData.IsPositionOccupied = False    'pure sending only  , nothing going to enqueue , hsien , 2015.03.26
+                        Return True
+                    End If
+                End If
+        End Select
+
+        Return False
+
+    End Function
+    '-----------------------------------------
+    '   The common data initializing procedure
+    '-----------------------------------------
+    Public Function dataInitialProcess(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                'check if persistance file existed
+                Dim fi As FileInfo = New FileInfo(My.Application.Info.DirectoryPath + "\Data\" + Me.DeviceName + ".trayinfo")
+                If (fi.Exists) Then
+                    Try
+                        'trayInfo.Load(fi.FullName)
+                        __occupiedStatus.Load(fi.FullName)
+                    Catch ex As Exception
+                        '--------------------------------------
+                        'something wrong , create file
+                        'marked as inexisted tray , but user still to override info afterward 
+                        '--------------------------------------
+                        Try
+                            fi.Delete()
+                            __occupiedStatus.Create(fi.FullName)
+                        Catch __ex As Exception
+                            '-------------------------------------------
+                            '   Failed to delete/create
+                            '-------------------------------------------
+                            sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("dataInitialProcess:error, {0} , {1} ", fi.Name & __ex.Message)) 'record error reason
+                        End Try
+                        __occupiedStatus.DataCollection.First.IsPositionOccupied = False
+                    End Try
+                Else
+                    '--------------------------------------
+                    'inexisted , create file
+                    'marked as inexisted tray , but user still to override info afterward 
+                    '--------------------------------------
+                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("dataInitialProcess:{0} not found", fi.FullName)) 'record error reason
+
+                    __occupiedStatus.Create(fi.FullName)
+                    __occupiedStatus.DataCollection.First.IsPositionOccupied = False
+                End If
+                state = 10
+            Case 10
+                '---------------------------------------------------------
+                'data verification , if conflict with record , raise alarm
+                '---------------------------------------------------------
+                If (checkWaferCoverLossAndUnknown()) Then
+                    Return True
+                End If
+        End Select
+
+        Return False
+    End Function
+#End Region
+
+    '----------------------------
+    '   Basic initializing 
+    '----------------------------
+    Sub New()
+        ReadyToSendOut = New flagController(Of IChainSynchronizable.synchronizingFlagsEnum) 'pre-initial flags
+        UpstreamNode = Nothing
+        Me.initialize = [Delegate].Combine(Me.initialize,
+                                           New Func(Of Integer)(AddressOf initEnableAllDrives),
+                                                New Func(Of Integer)(AddressOf initMappingAndSetup))
+    End Sub
+
+    Overridable Function initMappingAndSetup() As Integer
+        With Me.relatedFlags
+            .AddRange(ReadyToSendOut.FlagElementsArray)
+            .AddRange(startupFlags.FlagElementsArray)
+            If (UpstreamNode IsNot Nothing) Then
+                .AddRange(UpstreamNode.SynchronFlags.FlagElementsArray) 'used to do self-test
+            End If
+        End With
+
+        'configure sendout failed alarm
+        'todo , the invalid alarm handling flow
+        With alarmPackSendoutFailed
+            .Sender = Me
+            .PossibleResponse = alarmContextBase.responseWays.RETRY 'retry only
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() (True)
+            '.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+            '                                                             If (isSendedOutDone()) Then
+            '                                                                 'release until passed
+            '                                                                 transportMotor.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+            '                                                                 If (isUpstreamTriggered) Then
+            '                                                                     UpstreamNode.SynchronFlags.resetFlag(IChainSynchronizable.synchronizingFlagsEnum.SYNCHRON_REQUEST)
+            '                                                                 End If
+            '                                                                 Return True
+            '                                                             End If
+            '                                                             Return False
+            '                                                         End Function
+        End With
+
+        'state function link
+        Me.systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf MyBase.stateExecute 'from the shiftModel
+        Me.systemMainState = systemStatesEnum.IGNITE
+
+        'sd configuration
+        If (transportMotor IsNot Nothing) Then
+            With transportMotor
+                .SlowdownLatch = sdLatchEnum.LATCH    'latch mode , hsien , 2015.03.26
+                .SlowdownMode = sdModeEnum.SLOW_DOWN_STOP
+            End With
+        End If
+
+        'record verification
+        'sensor configuration
+        Me.checkListWaferCoverSensors.Clear()
+        Me.checkListWaferCoverSensors.Add(New KeyValuePair(Of Integer, sensorControl)(0, existedSensor))
+
+        'close all sensorcontrol , hsien , 2015.04.04
+        For Each __drive As driveBase In actionComponents
+            If (TryCast(__drive, sensorControl) IsNot Nothing) Then
+                __drive.IsEnabled = False
+            End If
+        Next
+        'Console.Write("")
+        Return 0
+    End Function
+
+
+    '----------------------------
+    '   Motor Alarm Logger
+    '----------------------------
+    Sub logTransporterAlarm(sender As alarmManager, e As EventArgs) Handles CentralAlarmObject.alarmOccured
+        If (Me.IsMyAlarmCurrent) Then
+
+            '----------------------------------------------
+            '   Unexpected Alarm occrued , log all states
+            '----------------------------------------------
+            Dim sb As StringBuilder = New StringBuilder
+            'all flag setup
+            sb.AppendLine(String.Format("({0}) Dump Message", Me.DeviceName))
+            Me.GetType.GetFields(BindingFlags.Instance Or BindingFlags.NonPublic).All(Function(__property As FieldInfo) As Boolean
+                                                                                          Try
+                                                                                              sb.AppendLine(String.Format("{0}:{1}",
+                                                                                                                          __property.Name,
+                                                                                                                          __property.GetValue(Me).ToString))
+                                                                                          Catch ex As Exception
+                                                                                              sb.AppendLine(String.Format("(Exception){0}:{1}",
+                                                                                                                          __property.Name,
+                                                                                                                          ex.Message))
+                                                                                          End Try
+                                                                                          Return True
+                                                                                      End Function)
+            sb.AppendLine(String.Format("({0}) Dump Message End", Me.DeviceName))
+            sendMessage(internalEnum.GENERIC_MESSAGE, sb.ToString)
+        End If
+    End Sub
+
+End Class
+

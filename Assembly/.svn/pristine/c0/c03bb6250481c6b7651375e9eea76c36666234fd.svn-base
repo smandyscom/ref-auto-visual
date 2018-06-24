@@ -1,0 +1,8 @@
+goto :EOF
+set AppPath=%0\..\tools\generator\generator.exe
+set ExcelFilePath=%0\..\maps\mapData_05-067.xlsx
+set definations= %0\..\definations
+%AppPath% %ExcelFilePath%   %definations%\inputs.vb                     %0\..\tools\generator\MappingSetInput.xml  inputAddress
+%AppPath% %ExcelFilePath%   %definations%\outputs.vb                  %0\..\tools\generator\MappingSetOutput.xml  outputAddress
+%AppPath% %ExcelFilePath%   %definations%\motorPoints.vb         %0\..\tools\generator\MappingSetMotor.xml  motorPoints
+%AppPath% %ExcelFilePath%   %definations%\motorAddress.vb      %0\..\tools\generator\MappingSetMotorAddress.xml  motorAddress

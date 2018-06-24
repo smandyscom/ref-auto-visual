@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<clsApplyRule>
+  <ruleCollection ClassName="good" IsEnabled="true" Color="FF32CD32">
+    <Bins>1</Bins>
+    <Criteria isEnabled="true" isInRange="true" isIncludeMinValue="true" isIncludeMaxValue="true" Key="PVA_00" minValue="15" maxValue="15" Type="VALUE" />
+    <Criteria isEnabled="true" isInRange="true" isIncludeMinValue="true" isIncludeMaxValue="true" Key="SAW_00" minValue="15" maxValue="15" Type="VALUE" />
+  </ruleCollection>
+  <ruleCollection ClassName="SizeNg" IsEnabled="true" Color="FF32CD32">
+    <Bins>2</Bins>
+    <Criteria isEnabled="true" isInRange="true" isIncludeMinValue="true" isIncludeMaxValue="true" Key="PVA_00" minValue="1" maxValue="1" Type="VALUE" />
+  </ruleCollection>
+  <ruleCollection ClassName="Broken" IsEnabled="true" Color="FF32CD32">
+    <Bins>3</Bins>
+    <Criteria isEnabled="true" isInRange="true" isIncludeMinValue="true" isIncludeMaxValue="true" Key="PVA_00" minValue="2" maxValue="2" Type="VALUE" />
+  </ruleCollection>
+  <ruleCollection ClassName="TTVNg" IsEnabled="true" Color="FF32CD32">
+    <Bins>4</Bins>
+    <Criteria isEnabled="true" isInRange="true" isIncludeMinValue="true" isIncludeMaxValue="true" Key="SAW_00" minValue="1" maxValue="1" Type="VALUE" />
+  </ruleCollection>
+  <ruleCollection ClassName="other" IsEnabled="true" Color="FF32CD32">
+    <Bins>4</Bins>
+  </ruleCollection>
+</clsApplyRule>

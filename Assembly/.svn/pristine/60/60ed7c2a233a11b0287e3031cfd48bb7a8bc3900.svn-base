@@ -1,0 +1,12 @@
+﻿Imports Automation
+
+Public Class userControlAnalogMonitor
+    Sub loadControl() Handles MyBase.Load
+        Me.LabelChannelName.Text = Me.Tag.ToString
+        timerScan.Enabled = True
+    End Sub
+
+    Private Sub timerScanTick(sender As Object, e As EventArgs) Handles timerScan.Tick
+        Me.TextBoxValue.Text = BitConverter.ToDouble(BitConverter.GetBytes(mainIOHardware.readWord(Me.Tag)), 0)
+    End Sub
+End Class

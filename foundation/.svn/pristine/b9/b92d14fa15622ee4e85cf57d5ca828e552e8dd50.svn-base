@@ -1,0 +1,343 @@
+﻿Imports Automation
+Imports Automation.Components.CommandStateMachine
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class clsSynchronizableTransporterPullType
+    Inherits shiftingModel
+    Implements IChainSynchronizableMasterSlave
+    Implements IFinishableStation
+    Public Enum FlagsEnum
+        SYNC_MASTER_MODE '同動中是否為master(主要控制多段皮帶，以拉式方法是同動中最後一段的皮帶)
+        SYNC_WITH_UP_STREAM_NODE '記住是否與上一段皮帶同動
+        ALLOW_EMPTY '可以有空片功能
+        SET_LOCK
+        MOVING
+        END_STREAM 'True: 設定此段是否為末端輸送帶，不可向下游輸送帶發出同動請求
+        NEED_RESET_UP_STREAM_NODE_REPLY
+    End Enum
+
+    Enum isAbleTransferEnum
+        _0
+        _10
+        _20
+        _100
+        _200
+        _300
+    End Enum
+    Enum transferProcessEnum
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _300
+        _200
+
+        _120
+
+    End Enum
+    'Public Property UpstreamNode As IChainSynchronizable Implements IChainSynchronizable.NeighborNode '前一段輸送帶
+    Public Property UpstreamNode As IChainSynchronizableMasterSlave Implements IChainSynchronizableMasterSlave.NeighborNode '前一段輸送帶
+    'Public Property SynchronArgument As Object Implements IChainSynchronizable.Arguments
+    Public Property SynchronFlags As flagController(Of IChainSynchronizableMasterSlave.synchronizingFlagsEnum) Implements IChainSynchronizableMasterSlave.SynchronFlags
+    Public Property Flags As flagController(Of FlagsEnum) = New flagController(Of FlagsEnum)
+    Public Property UpstreamStations As List(Of IFinishableStation) Implements IFinishableStation.UpstreamStations
+    Public Property FinishableFlags As flagController(Of IFinishableStation.controlFlags) = New flagController(Of IFinishableStation.controlFlags) Implements IFinishableStation.FinishableFlags
+    Public setMove As Func(Of List(Of cMotorPoint), Integer) '設定移動前所要設定的程序，如point table, velocity profile
+    Public Property outputBitMoving As Short = -1 '輸送帶移動時，moving為true，可設定輸出點位
+    Property PointTable As List(Of cMotorPoint) '若要自己動，但要與上段輸送帶同動，必須把要移動的馬達點位集合在此
+#Region "Exteranl Data delcare"
+    Public isResendAction As Func(Of Boolean) = Function() (False) '填入判斷式，是否要重送action旗標
+    Public moveSelfCondition As Func(Of Boolean) = Function() (False)  '是否自我移動的條件
+    Public startShiftMove As Func(Of Boolean) = Function() (True) '填入開始移動方式，可能是同動或自己動
+    Public checkMotionDone As Func(Of Boolean) = Function() (True)
+#End Region
+    Protected Overrides Function dataVerifyAction() As Boolean
+        Select Case systemSubState
+            Case shiftingStates.DATA_POST_VERIFY 'before moving check
+                Return True
+            Case shiftingStates.DATA_PRE_VERIFY 'after moving check
+                If checkWaferThroughJammed() And checkWaferCoverLossAndUnknown() Then
+                    If outputBitMoving <> 0 Then DO_ClrB(outputBitMoving)
+                    Return True '回應 移動完成
+                Else
+                    Return False
+                End If
+        End Select
+        Return True 'checkWaferCoverLossAndUnknown() ' And checkWaferThroughJammed() 'And checkWaferThroughLoss() 'And checkWaferThroughUnknown()
+    End Function
+    Protected Function stateIgnite() As Integer '直接跳至執行階段
+        systemMainState = systemStatesEnum.EXECUTE
+        Return 0
+    End Function
+
+    Protected Overrides Function isAbleTransfer() As Boolean 'shiftingModel中定義必須實作出的函式
+
+        Select Case CType(actionState, isAbleTransferEnum)
+            Case isAbleTransferEnum._0 '等待上段皮帶回應是否同動
+                If UpstreamNode Is Nothing Then
+                    Flags.writeFlag(FlagsEnum.NEED_RESET_UP_STREAM_NODE_REPLY, False)
+                    actionState = isAbleTransferEnum._10
+                ElseIf moveSelfCondition() = True Then '是否自我移動的條件，可不需要等上段皮帶回應
+                    Flags.writeFlag(FlagsEnum.NEED_RESET_UP_STREAM_NODE_REPLY, False)
+                    actionState = isAbleTransferEnum._10 'move self
+                ElseIf UpstreamNode.SynchronFlags.viewFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED) = True Then
+                    '記住 是否與上段皮帶同動
+                    'Flags.writeFlag(FlagsEnum.SYNC_WITH_UP_STREAM_NODE,
+                    '                       UpstreamNode.SynchronFlags.viewFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST)) '同動完清除此request
+                    Flags.writeFlag(FlagsEnum.NEED_RESET_UP_STREAM_NODE_REPLY, True)
+                    actionState = isAbleTransferEnum._10
+                End If
+            Case isAbleTransferEnum._10 '已取得與上段皮帶是否同動的旗標，再看看自己是否需要與下段皮帶同動?
+                '----------------------------------------------------------------------
+                '   check The last position had occupied , need to synchron with next station
+                '   or
+                '   allow empty shift data transfer and there is any remained in this station
+                '----------------------------------------------------------------------
+                If OccupiedStatus.DataCollection.Last().IsPositionOccupied OrElse
+                    (Flags.viewFlag(FlagsEnum.ALLOW_EMPTY) = True AndAlso IsAnyRemained = True) Then 'jk note :最後一個位置有片 或 允許空片傳送
+                    '----------------------------------------------------------------------
+                    '   The last position had occupied , need to synchron with next station
+                    '----------------------------------------------------------------------
+                    If Flags.viewFlag(FlagsEnum.END_STREAM) = False Then
+                        Flags.resetFlag(FlagsEnum.SYNC_MASTER_MODE) '請求與下段皮帶同動(設為slave模式)
+                        SynchronFlags.setFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST) 'need sync with next stream
+                        SynchronFlags.setFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED) '代表同動已回應
+                        If Flags.viewFlag(FlagsEnum.NEED_RESET_UP_STREAM_NODE_REPLY) = True Then
+                            Flags.writeFlag(FlagsEnum.SYNC_WITH_UP_STREAM_NODE, UpstreamNode.SynchronFlags.viewFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST)) '同動完清除此request
+                            UpstreamNode.SynchronFlags.writeFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED, False)
+                        End If
+                        Return True '回應 需要移動
+                    Else
+                        '重新module action，等待module action完後，回到上一步重新等待上一家reply
+                        '不能reset up stream reply
+                        systemSubState = shiftingStates.SET_MODULES_ACTION : Return False '回應，不需要移動，且把狀態改回重新action
+                    End If
+                Else
+                    Flags.setFlag(FlagsEnum.SYNC_MASTER_MODE) '自己移動(設為master模式)，接下來再查看是否要帶動前段皮帶
+                    SynchronFlags.resetFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST) 'master mode, move self
+                    If Flags.viewFlag(FlagsEnum.ALLOW_EMPTY) = True Then SynchronFlags.setFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED) '代表同動已回應
+                    If Flags.viewFlag(FlagsEnum.NEED_RESET_UP_STREAM_NODE_REPLY) = True Then
+                        Flags.writeFlag(FlagsEnum.SYNC_WITH_UP_STREAM_NODE, UpstreamNode.SynchronFlags.viewFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST)) '同動完清除此request
+                        UpstreamNode.SynchronFlags.writeFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED, False)
+                    End If
+                    actionState = isAbleTransferEnum._20 '自已移動
+                End If
+            Case isAbleTransferEnum._20 'master mode(no need sync with next stream), check do i need sync with up stream node or move self
+                '----------------------------------------------------------------------
+                '   This station had capability to load 
+                '   take upstream station moving synchonizly if needed
+                '----------------------------------------------------------------------
+                If Flags.viewFlag(FlagsEnum.SYNC_WITH_UP_STREAM_NODE) = True Then
+                    '----------------------------------------------------------------------
+                    '  MASTER MODE 必須與上一段皮帶同動
+                    '----------------------------------------------------------------------
+                    'IncomingShiftData = CType(UpstreamNode, shiftingModel).OccupiedStatus.DataCollection.Last().Clone() '複製上一段輸送帶最後一片的wafer資料
+                    IncomingShiftData.Assign(CType(UpstreamNode, shiftingModel).OccupiedStatus.DataCollection.Last) 'assignment
+                    Return True '回應 需要移動
+
+                Else '可不用等前段輸送帶請求同動旗標
+                    If IsAnyRemained = True Then
+                        actionState = isAbleTransferEnum._200
+                    Else 'there is no wafer in conveyor andalso don't need sync with up stream
+                        'check finish flag first
+                        If UpstreamStations.Count > 0 AndAlso UpstreamStations.TrueForAll(Function(obj As IFinishableStation) (obj.FinishableFlags.viewFlag(IFinishableStation.controlFlags.STATION_FINISHED) = True)) Then
+                            FinishableFlags.writeFlag(IFinishableStation.controlFlags.STATION_FINISHED, True)
+                            actionState = isAbleTransferEnum._300
+                        Else 'resend action
+                            actionState = isAbleTransferEnum._100 'resend action
+                        End If
+                    End If
+                End If
+
+
+            Case isAbleTransferEnum._100  'resend action
+                If Flags.viewFlag(FlagsEnum.ALLOW_EMPTY) = True Then '允許空片傳遞，則回應給下一段皮帶可以動
+                    SynchronFlags.writeFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST, False) '不要同動
+                    SynchronFlags.setFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED) '代表同動已回應
+                End If
+                actionState = isAbleTransferEnum._0 : systemSubState = shiftingStates.SET_MODULES_ACTION : Return False '回應，不需要移動，且把狀態改回重新action
+
+
+
+            Case isAbleTransferEnum._200 'SPONTANOUS MODE 只有自己動
+                '-----------------------------------------------------------------------
+                '   SPONTANOUS MODE , (CAUTION)incoming should be empty data
+                '-----------------------------------------------------------------------
+                IncomingShiftData = Activator.CreateInstance(GetType(shiftDataPackBase))
+                IncomingShiftData.IsPositionOccupied = False
+                Return True '回應 需要移動
+
+
+            Case isAbleTransferEnum._300
+                ' 一直回應下段皮帶不同動，使下段皮帶可以自行移動
+                SynchronFlags.writeFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST, False) '不要同動
+                SynchronFlags.setFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REPLIED) '代表同動已回應
+                ' 若上段站只要有一個收料結束不成立，則回復到正常運作模式，重新要片
+                If UpstreamStations.Exists(Function(obj As IFinishableStation) (obj.FinishableFlags.viewFlag(IFinishableStation.controlFlags.STATION_FINISHED) = False)) Then
+                    FinishableFlags.writeFlag(IFinishableStation.controlFlags.STATION_FINISHED, False) 'clear me finish flag
+                    actionState = isAbleTransferEnum._100
+                End If
+            Case Else
+
+        End Select
+        Return False
+
+    End Function
+
+    ''' <summary>
+    ''' 實做 單軸 或 多軸同動的功能，若是被動軸則等待同動旗標完成
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Overrides Function transferProcess() As Boolean
+
+        'caution : mechanical(CSTA) action achived firstly , then data transfer synchron
+        'otherwise , data verification may failed
+        'if slave
+        'motorControl.drive(WAIT_CSTA_DONE)
+        'todo jk note: slave指的是等待被拉的輸送帶。 master只有一個，slave有很多個。
+        Select Case CType(actionState, transferProcessEnum)
+            Case transferProcessEnum._0
+                If Flags.viewFlag(FlagsEnum.SET_LOCK) = True Then '被外部MODULE鎖住
+                    '等待外部解鎖
+                Else
+                    Flags.setFlag(FlagsEnum.MOVING)
+                    If outputBitMoving <> 0 Then DO_SetB(outputBitMoving)
+                    actionState = transferProcessEnum._10
+                End If
+            Case transferProcessEnum._10
+                If Flags.viewFlag(FlagsEnum.SYNC_MASTER_MODE) = True Then
+                    actionState = transferProcessEnum._100
+                Else
+                    actionState = transferProcessEnum._200
+                End If
+
+            Case transferProcessEnum._100 'master mode
+                'If Flags.viewFlag(syncFlagsEnum.SYNC_WITH_UP_STREAM_NODE) = True Then
+                PointTable.Clear() '先清除point table
+                setMove(PointTable)
+                'End If
+
+                'Dim motorA As New motorControl
+                'motorA.PointTable.AddRange({New cMotorPoint(),
+                '                            New cMotorPoint})   'setup
+                'motorA.drive(motorControl.motorCommandEnum.START_MOVE)
+                actionState = transferProcessEnum._110
+            Case transferProcessEnum._110
+                If startShiftMove() = True Then
+                    actionState = transferProcessEnum._120
+                End If
+            Case transferProcessEnum._120
+                If checkMotionDone() = True Then
+                    actionState = transferProcessEnum._300
+                End If
+
+            Case transferProcessEnum._200 'slave mode
+                '-----------------------------------------------------------------
+                '   Wait until synchronized ( Be pull down by Downstream Stations)
+                '-----------------------------------------------------------------
+                'todo jk note: 雖然此時是LOCK，但主軸
+                If (Not SynchronFlags.viewFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST)) Then
+                    '-------------------------------------------------------------
+                    '   SLAVE MODE , take upstream together if needed. 若有上一段皮帶 且 已請求，則順便清除同動旗標
+                    '-------------------------------------------------------------
+                    If checkMotionDone() = True Then
+                        actionState = transferProcessEnum._300
+                    End If
+                End If
+
+            Case transferProcessEnum._300 '同動完成了，check 是否有upstream 請求同動，若有，則清除同動
+                If Flags.readFlag(FlagsEnum.SYNC_WITH_UP_STREAM_NODE) = True Then '讀完即焚
+
+                    'IncomingShiftData = CType(UpstreamNode, shiftingModel).OccupiedStatus.DataCollection.Last.Clone()
+                    IncomingShiftData.Assign(CType(UpstreamNode, shiftingModel).OccupiedStatus.DataCollection.Last) 'assignment
+
+                    UpstreamNode.SynchronFlags.resetFlag(IChainSynchronizableMasterSlave.synchronizingFlagsEnum.SYNCHRON_REQUEST)  ' reset operation should in this state , in order to coperate with enqueue operation
+                Else
+                    IncomingShiftData = Activator.CreateInstance(GetType(shiftDataPackBase))
+                    IncomingShiftData.IsPositionOccupied = False
+                End If
+                Flags.resetFlag(FlagsEnum.MOVING) '解除busy
+                Return True '回應 移動完成
+        End Select
+        Return False
+    End Function
+
+    Sub New()
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        systemMainState = systemStatesEnum.IGNITE
+        'Me.shiftDataType = GetType(shiftDataExample)
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf initMappingAndSetup))
+
+        SynchronFlags = New flagController(Of IChainSynchronizableMasterSlave.synchronizingFlagsEnum)
+
+    End Sub
+
+    Function initMappingAndSetup()
+        Me.relatedFlags.AddRange(ShiftFlags.FlagElementsArray)
+        Me.relatedFlags.AddRange(SynchronFlags.FlagElementsArray)
+        If (UpstreamNode IsNot Nothing) Then
+            Me.relatedFlags.AddRange(UpstreamNode.SynchronFlags.FlagElementsArray) 'relatingFlags
+        End If
+        Return 0
+    End Function
+
+    Public Function _setMove(ByRef pointTable As List(Of cMotorPoint)) As Integer Implements IChainSynchronizableMasterSlave.setMove
+        Return setMove(pointTable)
+    End Function
+End Class
+Public Interface IChainSynchronizableMasterSlave
+
+    Property NeighborNode As IChainSynchronizableMasterSlave    'link to previous/next station which in the synchrozing chain
+    '--------------------------------------------------------------------------------------
+    'For pull/push-type logic , once this shifter cannot make any move , should raise this flag , indicating this station is ready to move.
+    ' Once the flag was pull-down by next station , the data shifting operation should begin 
+    '--------------------------------------------------------------------------------------
+    Enum synchronizingFlagsEnum
+        SYNCHRON_REQUEST 'request sync move with down stream node
+        SYNCHRON_REPLIED '附加選項 request flag activated until up stream reply is true.  必須等到上一段皮帶回應，才去看request旗標
+    End Enum
+
+    Property SynchronFlags As flagController(Of synchronizingFlagsEnum)
+    'Property ExternalShiftDataLink As Func(Of shiftDataPackBase) ' the data going to enqueue , as delegate , able to access collection-index
+
+    'Property Arguments As Object       'data need to pass when synchron, i.e motorIndex,position (for CSTA setting use)
+    ''' <summary>
+    ''' 設定同動
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function setMove(ByRef pointTable As List(Of cMotorPoint)) As Integer
+End Interface
+#Region "必須放在外面的"
+#If 1 = 0 Then
+'上料區 舌頭段輸送帶可以用此class
+'上料區 傳送段輸送帶可以用此class
+Public Class TestBench
+    Dim unloadingConveyorTongue As synchronizableTransporterPullTypeJk = New synchronizableTransporterPullTypeJk()
+    Dim unloadingBuffer As clsUnloadingBuffer = New clsUnloadingBuffer
+    Sub Test()
+        With unloadingConveyorTongue
+            .highestPriority = Function() As Boolean '下料輸送帶 buffer滿片時，必須自己動
+                                   If unloadingBuffer.controlFlags.viewFlag(clsUnloadingBuffer.controlFlagsEnum.IS_FULL) = True Then
+                                       Return True
+                                   End If
+                                   Return False
+                               End Function
+
+            '.highestPriority = Function() (True)
+
+
+        End With
+    End Sub
+End Class
+#End If
+
+#End Region

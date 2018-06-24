@@ -1,0 +1,10 @@
+Enum	inputAddress As ULong
+	DUMMY_INPUT_NO								=	&H0000000000000001		'	空點常開
+	DUMMY_INPUT_NC								=	&H0000000000000002		'	空點常關
+	EMG								=	&H0100000100000000		'	急停輸入
+    APPROX1 = &H200000100000000      '	連線檢知1
+    APPROX2 = &H200000100000001      '	連線檢知2
+    GRIP_SEN = &H200000100000002      '	夾手放位檢知
+    PB_PAUSE = &H200000100000004      '	暫停鍵
+    TEMP_REACH = &H200000100000005      '	溫度到達
+End Enum

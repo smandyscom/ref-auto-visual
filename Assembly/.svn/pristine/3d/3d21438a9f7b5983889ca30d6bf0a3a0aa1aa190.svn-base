@@ -1,0 +1,496 @@
+﻿Imports Automation
+Imports AutoNumeric
+Imports System.Linq
+Imports MathNet.Numerics.LinearAlgebra
+Imports FA.dmCalibrationSetting
+Imports FA.distanceMeter
+Imports System.Xml.Serialization
+Imports System.ComponentModel
+Imports System.Drawing.Design
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class dmCalibrationSetting
+    Inherits settingBase
+
+    ''' <summary>
+    ''' Generate shift-search route
+    ''' </summary>
+    ''' <remarks></remarks>
+    <Editor(GetType(utilitiesUI.popupPropertyGridEditor), GetType(UITypeEditor))>
+    Class edgeSearchSetting
+        Implements IRoute
+
+        Property StartPoint As String
+            Get
+                Return __startPoint.PositionText
+            End Get
+            Set(value As String)
+                __startPoint.PositionText = value
+            End Set
+        End Property
+        ''' <summary>
+        ''' In R-Frame
+        ''' </summary>
+        ''' <remarks></remarks>
+        Dim __startPoint As PositionVector = New PositionVector(framesDefinition.R)
+        Property SearchDirection As axisEntityEnum = axisEntityEnum.X
+        Property ShiftDirection As axisEntityEnum = axisEntityEnum.Y
+
+        Property SearchDepth As Double = 3
+        Property ShiftPitch As Double = 0.1
+        Property ShiftCount As Integer = 10
+
+        ''' <summary>
+        ''' In mm/sec
+        ''' </summary>
+        ''' <value></value>
+        ''' <returns></returns>
+        ''' <remarks></remarks>
+        Property Speed As Double = 3
+
+        <XmlIgnore()>
+        <Browsable(False)>
+        Public ReadOnly Property MeasurePoints As List(Of PositionVector) Implements IRoute.MeasurePoints
+            Get
+                Dim output As List(Of PositionVector) = New List(Of PositionVector)
+                Dim routeStart As PositionVector = __startPoint.Clone
+                Dim routeEnd As PositionVector = __startPoint.Clone
+                routeEnd.AxisValue(SearchDirection) += SearchDepth
+
+                Dim counter As Integer = 0
+                While counter <= ShiftCount
+                    output.AddRange({routeStart.Clone,
+                                     routeEnd.Clone})
+
+                    routeStart.AxisValue(ShiftDirection) += ShiftPitch
+                    routeEnd.AxisValue(ShiftDirection) += ShiftPitch
+                    counter += 1
+                End While
+
+                Return output
+            End Get
+        End Property
+
+        Friend pointCloud As List(Of Vector(Of Double)) = New List(Of Vector(Of Double))
+
+        ''' <summary>
+        ''' Feedback value , in mm
+        ''' </summary>
+        ''' <remarks></remarks>
+        Friend startLatchX As Double = 0
+        Friend endLatchX As Double = 0
+        Friend startLatchY As Double = 0
+        Friend endLatchY As Double = 0
+
+    End Class
+
+
+    <Browsable(False)>
+    <XmlIgnore()>
+    Friend ReadOnly Property ImageProcesses As Dictionary(Of framesDefinition, imageProcessSettingBlock)
+        Get
+            Dim output As Dictionary(Of framesDefinition, imageProcessSettingBlock) = New Dictionary(Of framesDefinition, imageProcessSettingBlock)
+            output(framesDefinition.C1) = C1ImageProcess
+            output(framesDefinition.C2) = C2ImageProcess
+            output(framesDefinition.C4) = C4ImageProcess
+            Return output
+        End Get
+    End Property
+    <Browsable(False)>
+   <XmlIgnore()>
+    Friend ReadOnly Property RouteProcesses As Dictionary(Of framesDefinition, edgeSearchSetting)
+        Get
+            Dim output As Dictionary(Of framesDefinition, edgeSearchSetting) = New Dictionary(Of framesDefinition, edgeSearchSetting)
+            output(framesDefinition.C1) = C1RouteProcess
+            output(framesDefinition.C2) = C2RouteProcess
+            Return output
+        End Get
+    End Property
+
+    Property C1ImageProcess As imageProcessSettingBlock = New imageProcessSettingBlock
+    Property C2ImageProcess As imageProcessSettingBlock = New imageProcessSettingBlock
+    Property C4ImageProcess As imageProcessSettingBlock = New imageProcessSettingBlock
+
+    Property C1RouteProcess As edgeSearchSetting = New edgeSearchSetting
+    Property C2RouteProcess As edgeSearchSetting = New edgeSearchSetting
+
+    <XmlIgnore()>
+    Public Overrides Property Filename As String
+        Get
+            Return String.Format("{0}{1}.xml",
+                                 cameraCalibrationSettingBase.settingPath,
+                                 Me.ToString)
+        End Get
+        Set(value As String)
+            'nothing to do
+        End Set
+    End Property
+
+    Sub New()
+
+    End Sub
+
+End Class
+
+''' <summary>
+''' Procedures
+''' 1. Using C1,C2,C3 Fetch edge line (Double Point)
+''' 2. Using DM Cut-Measuring Edges , get N data points (3D)
+''' 3. Transform these points , referenced on C1-Frame (X,Y values)
+''' 4. Calculate Point-Line Distance , along Y-Axis of C1 , get N differential distance , make a standard variation as reference
+''' 5. Average these value , get the Z-offset
+''' </summary>
+''' <remarks></remarks>
+Public Class dmCalibration
+    Inherits systemControlPrototype
+    Implements IDisposable
+
+
+
+    Property IsProcedureStarted As Boolean
+        Get
+            Return __isProcedureStarted
+        End Get
+        Set(value As Boolean)
+            'trigger start only
+            If Not __isProcedureStarted And
+                value Then
+                __isProcedureStarted = True
+            End If
+        End Set
+    End Property
+    Dim __isProcedureStarted As Boolean = False
+
+    Friend setting As dmCalibrationSetting = New dmCalibrationSetting
+
+    Dim currentImageProcess As Dictionary(Of framesDefinition, imageProcessSettingBlock).Enumerator = Nothing
+    Dim currentEdgeProcess As Dictionary(Of framesDefinition, edgeSearchSetting).Enumerator = Nothing
+
+    Dim currentRoutePoint As List(Of PositionVector).Enumerator = Nothing
+
+    ''' <summary>
+    ''' Cached the image results
+    ''' </summary>
+    ''' <remarks></remarks>
+    Dim imageResults As Dictionary(Of framesDefinition, List(Of Vector(Of Double))) =
+        New Dictionary(Of framesDefinition, List(Of Vector(Of Double)))
+
+
+
+    Enum subStatesEnum As Integer
+        READY = 10
+        EDGE_IMAGE = 100
+
+        EDGE_START = 200
+        ROUTE_START = 300
+
+        DATA_PROCESS = 400
+        PROCESS_DONE = 500
+    End Enum
+
+
+    ''' <summary>
+    ''' Raise in the beginning of procedure
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Event ImageProcedureLoaded(ByVal sender As Object, ByVal e As EventArgs)
+    ''' <summary>
+    ''' Used to trigger external procedure
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Event CameraTriggered(ByVal sender As Object, ByVal e As EventArgs)
+    Dim WithEvents triggerHandle As imageProcessTriggerEventArgs = Nothing
+    Dim doneHandle As imageProcessEndEventArgs = Nothing
+
+
+    ''' <summary>
+    ''' Do Edge image processing
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Protected Function stateExecute() As Boolean
+        Select Case systemSubState
+            Case 0
+                If __isProcedureStarted Then
+                    systemSubState = subStatesEnum.READY
+                End If
+            Case subStatesEnum.READY
+                'move carriage to chuck center
+                With frames.Instance
+                    .CurrentMovingItem = framesDefinition.C4
+                    .CurrentRItem = itemsDefinition.CHOKE_CENTER
+                End With
+                systemSubState += 10
+            Case subStatesEnum.READY + 10
+                If Assembly.Instance.IsAllAxesSettled Then
+                    currentImageProcess = setting.ImageProcesses.GetEnumerator
+                    systemSubState = subStatesEnum.EDGE_IMAGE
+                Else
+                    '-------------------
+                    '   Settling
+                    '-------------------    
+                End If
+                '------------------------------
+                '   Edge Image
+                '------------------------------
+            Case subStatesEnum.EDGE_IMAGE
+                If currentImageProcess.MoveNext Then
+                    triggerHandle = New imageProcessTriggerEventArgs(currentImageProcess.Current.Value.ToolBlock)
+                    RaiseEvent CameraTriggered(Me, triggerHandle)
+                    systemSubState += 10
+                Else
+                    '--------------------
+                    '   All Process Done
+                    '--------------------
+                    currentEdgeProcess = setting.RouteProcesses.GetEnumerator
+                    systemSubState = subStatesEnum.EDGE_START
+                End If
+            Case subStatesEnum.EDGE_IMAGE + 10
+                If Not __isCameraTriggerd Then
+                    Me.imageResults(currentImageProcess.Current.Key) = doneHandle.OutputPositionsUnit
+                    systemSubState = subStatesEnum.EDGE_IMAGE
+                Else
+                    '---------------------------
+                    '   Image Processing
+                    '---------------------------
+                End If
+                '-----------------------------
+                '   Edge Searching Start
+                '-----------------------------
+            Case subStatesEnum.EDGE_START
+                If currentEdgeProcess.MoveNext Then
+                    currentRoutePoint = currentEdgeProcess.Current.Value.MeasurePoints.GetEnumerator
+                    systemSubState = subStatesEnum.ROUTE_START
+                Else
+                    '---------------------
+                    '   All Route Executed
+                    '---------------------
+                    systemSubState = subStatesEnum.DATA_PROCESS
+                End If
+                '--------------------------------
+                '   Route Execution
+                '--------------------------------
+            Case subStatesEnum.ROUTE_START
+                If currentRoutePoint.MoveNext Then
+                    'move to start
+                    With frames.Instance
+                        .solveAbsAxAy(currentRoutePoint.Current, framesDefinition.LREAL)
+                    End With
+                    systemSubState += 10
+                Else
+                    '---------------------------
+                    '   No Route able to execute, check another edge
+                    '---------------------------
+                    systemSubState = subStatesEnum.EDGE_START
+                End If
+            Case subStatesEnum.ROUTE_START + 10
+                If Assembly.Instance.IsAllAxesSettled Then
+                    systemSubState += 10
+                Else
+                    '---------------------
+                    '   Settling
+                    '---------------------
+                End If
+            Case subStatesEnum.ROUTE_START + 20
+                If Assembly.Instance.__distanceMeter.drive(dmCommands.RT, {dmOnOff.__ON}) =
+                     IDrivable.endStatus.EXECUTION_END Then
+                    systemSubState += 10
+                Else
+                    '-------------------
+                    '   Communication
+                    '-------------------
+                End If
+            Case subStatesEnum.ROUTE_START + 30
+                If Assembly.Instance.__distanceMeter.drive(dmCommands.RT, {dmOnOff.__OFF}) =
+                     IDrivable.endStatus.EXECUTION_END Then
+
+                    currentRoutePoint.MoveNext() ' 
+
+                    Assembly.Instance.Profile(controlUnitsEnum.X).VelocityInUnit = currentEdgeProcess.Current.Value.Speed
+                    Assembly.Instance.Profile(controlUnitsEnum.Y).VelocityInUnit = currentEdgeProcess.Current.Value.Speed
+
+                    frames.Instance.solveAbsAxAy(currentRoutePoint.Current, framesDefinition.LREAL)
+                    systemSubState += 10
+
+                Else
+                    '-------------------
+                    '   Communication
+                    '-------------------
+                End If
+            Case subStatesEnum.ROUTE_START + 40
+                If Assembly.Instance.IsAllAxesSettled Then
+
+                    Assembly.Instance.Profile(controlUnitsEnum.X).VelocityInUnit = pData.MotorPoints(motorPoints.MsX_ZERO).VelocityInUnit
+                    Assembly.Instance.Profile(controlUnitsEnum.Y).VelocityInUnit = pData.MotorPoints(motorPoints.MsY_ZERO).VelocityInUnit
+
+                    systemSubState += 10
+                Else
+                    '-------------------
+                    '   Settling
+                    '-------------------
+                End If
+            Case subStatesEnum.ROUTE_START + 50
+                If Assembly.Instance.__distanceMeter.drive(dmCommands.MS, {dmTaskEnum.TASK_EDGE_AUTO_PEAK}) =
+                     IDrivable.endStatus.EXECUTION_END Then
+                    systemSubState += 10
+                Else
+                    '-------------------
+                    '   Communication
+                    '-------------------
+                End If
+            Case subStatesEnum.ROUTE_START + 60
+                With Assembly.Instance
+
+                    If .xMotorControl.IsLatched And
+                        .yMotorControl.IsLatched Then
+
+                        'the measure point in LREAL-Frame
+                        Dim measuredPointInLreal As PositionVector = New PositionVector(framesDefinition.LREAL) With {.Z =
+                            Assembly.Instance.__distanceMeter.MeasureValue}
+                        Dim transformationLRealToR As htmEdgeElementary = frames.Instance.ForwardKinematic(.xMotorControl.LatchedValue,
+                                                                                                        .yMotorControl.LatchedValue,
+                                                                                                        0,
+                                                                                                        framesDefinition.LREAL)
+                        'calculating measure point in R
+                        Dim measuredPointInR As PositionVector =
+                            frames.Instance.ForwardKinematic(.xMotorControl.LatchedValue,
+                                                                                                        .yMotorControl.LatchedValue,
+                                                                                                        0,
+                                                                                                        framesDefinition.LREAL) *
+                                                                                                    measuredPointInLreal
+
+                        currentEdgeProcess.Current.Value.pointCloud.Add(measuredPointInR.RawValue.SubVector(0, 3))
+                    Else
+                        '--------------------
+                        '   Not scanned the edge point
+                        '--------------------
+                    End If
+
+                    systemSubState = subStatesEnum.ROUTE_START
+
+                End With
+                '-------------------------------------------
+                '   All Data Fetched
+                '-------------------------------------------
+            Case subStatesEnum.DATA_PROCESS
+                'calculated out peak position by distance meter
+                Dim peakByDistanceMeter = AutoNumeric.fittingMethods.line3DIntersection(setting.RouteProcesses(framesDefinition.C1).pointCloud,
+                                                                                        setting.RouteProcesses(framesDefinition.C2).pointCloud)
+                'calculated out peak position by cameras (R2)
+                Dim peakByCameras As Vector(Of Double) = CreateVector.Dense(Of Double)({0,
+                                                                             0,
+                                                                             0,
+                                                                             1})
+
+                For Each collection As List(Of Vector(Of Double)) In imageResults.Values
+                    For Each item As Vector(Of Double) In collection
+                        peakByCameras += item
+                    Next
+                Next
+                'C1(y,z)/C2(x,z)/C4(x,y)
+                peakByCameras = peakByCameras / 2
+
+                'calculate origin offset in L-Real frame
+                Dim originError As PositionVector = frames.Instance.Transformation(framesDefinition.R, framesDefinition.LPC_REAL) *
+                    New PositionVector(peakByDistanceMeter - peakByCameras, framesDefinition.R)
+                frames.Instance.Elementray(framesDefinition.LPC_REAL, framesDefinition.L).Origin -= originError
+
+                systemSubState = subStatesEnum.PROCESS_DONE
+
+            Case subStatesEnum.PROCESS_DONE
+                __isProcedureStarted = False
+                systemSubState = 0
+        End Select
+
+        Return 0
+
+    End Function
+
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Sub imageProcessStarted(sender As Object, e As imageProcessTriggerEventArgs) Handles Me.CameraTriggered
+        __isCameraTriggerd = True
+        e.ToolBlock.Run()
+    End Sub
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Protected Overridable Sub imageProcessDone(sender As Object, e As imageProcessEndEventArgs) Handles triggerHandle.ImageProcessDone
+        Me.doneHandle = e
+        __isCameraTriggerd = False ' flag reset
+    End Sub
+    Protected __isCameraTriggerd As Boolean = False
+
+
+    Protected Sub New()
+        With Me.setting
+            .Load(Nothing)
+
+        End With
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        Me.systemMainState = systemStatesEnum.EXECUTE
+    End Sub
+
+#Region "singleton interface"
+    ''' <summary>
+    ''' Singalton pattern
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared ReadOnly Property Instance As dmCalibration
+        Get
+            If __instance Is Nothing Then
+                __instance = New dmCalibration
+            End If
+            Return __instance
+        End Get
+    End Property
+    Shared __instance As dmCalibration = Nothing
+#End Region
+
+#Region "IDisposable Support"
+    Private disposedValue As Boolean ' 偵測多餘的呼叫
+
+    ' IDisposable
+    Protected Overridable Sub Dispose(disposing As Boolean)
+        If Not Me.disposedValue Then
+            If disposing Then
+                ' TODO:  處置 Managed 狀態 (Managed 物件)。
+            End If
+
+            setting.Save()
+        End If
+        Me.disposedValue = True
+    End Sub
+
+    Protected Overrides Sub Finalize()
+        ' 請勿變更此程式碼。在上面的 Dispose(ByVal disposing As Boolean) 中輸入清除程式碼。
+        Dispose(False)
+        MyBase.Finalize()
+    End Sub
+
+    ' 由 Visual Basic 新增此程式碼以正確實作可處置的模式。
+    Public Sub Dispose() Implements IDisposable.Dispose
+        ' 請勿變更此程式碼。在以上的 Dispose 置入清除程式碼 (視為布林值處置)。
+        Dispose(True)
+        GC.SuppressFinalize(Me)
+    End Sub
+#End Region
+
+End Class
+
+

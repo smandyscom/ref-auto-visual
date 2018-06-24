@@ -1,0 +1,85 @@
+﻿Imports Automation.Components.CommandStateMachine
+Imports System.ComponentModel
+Imports Automation
+Imports SmarPodAssembly
+Imports System.Linq.Expressions
+Imports System.Windows.Forms
+
+Public Class userControlSmarPod
+    Property _smarPod As Smarpod
+    Property PropertyView As userControlPropertyView
+    Dim frm As System.Windows.Forms.Form
+    'Dim simultanousCommands As List(Of cMotorPoint) = New List(Of cMotorPoint)  'Hsien , 2015.01.25 , support simulatanous command
+
+    Private Sub loadUserControl(ByVal sender As Object, ByVal e As EventArgs) Handles MyBase.Load
+        'UserControlPropertyViewMotor.Drive = Motor
+        Me.SplitContainer1.Panel2.Controls.Add(PropertyView)
+        PropertyView.Dock = Windows.Forms.DockStyle.Fill
+    End Sub
+
+
+
+    Private Sub ButtonRelMove_Click(sender As Object, e As EventArgs) Handles _
+        ButtonXplus.Click, ButtonXminus.Click,
+        ButtonYplus.Click, ButtonYminus.Click,
+        ButtonZplus.Click, ButtonZminus.Click,
+        ButtonRXplus.Click, ButtonRXminus.Click,
+        ButtonRYplus.Click, ButtonRYminus.Click,
+        ButtonRZplus.Click, ButtonRZminus.Click
+        Select Case sender.name
+            Case ButtonXplus.Name : _smarPod.mTargetPose.Px += Val(ComboBoxRelDistance.Text)
+            Case ButtonXminus.Name : _smarPod.mTargetPose.Px -= Val(ComboBoxRelDistance.Text)
+            Case ButtonYplus.Name : _smarPod.mTargetPose.Py += Val(ComboBoxRelDistance.Text)
+            Case ButtonYminus.Name : _smarPod.mTargetPose.Py -= Val(ComboBoxRelDistance.Text)
+            Case ButtonZplus.Name : _smarPod.mTargetPose.Pz += Val(ComboBoxRelDistance.Text)
+            Case ButtonZminus.Name : _smarPod.mTargetPose.Pz -= Val(ComboBoxRelDistance.Text)
+
+        End Select
+        _smarPod.Move()
+
+    End Sub
+    Private Function GetPropertyName(Of T)(prop As Expression(Of Func(Of T))) As String
+        Dim expression = GetMemberInfo(prop)
+        Return expression.Member.Name
+    End Function
+    Private Shared Function GetMemberInfo(method As Expression) As MemberExpression
+        Dim lambda As LambdaExpression = TryCast(method, LambdaExpression)
+        If lambda Is Nothing Then
+            Throw New ArgumentNullException("method")
+        End If
+
+        Dim memberExpr As MemberExpression = Nothing
+
+        If lambda.Body.NodeType = ExpressionType.Convert Then
+            memberExpr = TryCast(DirectCast(lambda.Body, UnaryExpression).Operand, MemberExpression)
+        ElseIf lambda.Body.NodeType = ExpressionType.MemberAccess Then
+            memberExpr = TryCast(lambda.Body, MemberExpression)
+        End If
+
+        If memberExpr Is Nothing Then
+            Throw New ArgumentException("method")
+        End If
+
+        Return memberExpr
+    End Function
+
+    Private Sub btnConnect_Click(sender As Object, e As EventArgs) Handles btnConnect.Click
+        _smarPod.Connect(_smarPod.mModelNum, _smarPod.mLocator)
+    End Sub
+
+    Private Sub ButtonMoveToZero_Click(sender As Object, e As EventArgs) Handles ButtonMoveToZero.Click
+        With _smarPod.mTargetPose
+            .Px = 0
+            .Py = 0
+            .Pz = 0
+            .Rx = 0
+            .Ry = 0
+            .Rz = 0
+        End With
+        _smarPod.Move()
+    End Sub
+
+    Private Sub ButtonFindReferenceMark_Click(sender As Object, e As EventArgs) Handles ButtonFindReferenceMark.Click
+        _smarPod.FindReferenceMarks()
+    End Sub
+End Class

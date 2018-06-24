@@ -1,0 +1,14 @@
+﻿Imports Automation
+
+Public Interface IProcedure
+    Property IsProcedureStarted As flagController(Of interlockedFlag)
+
+    ''' <summary>
+    ''' Set before trigger
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property Arguments As Object
+
+End Interface

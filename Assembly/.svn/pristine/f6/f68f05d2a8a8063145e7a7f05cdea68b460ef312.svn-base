@@ -1,0 +1,225 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+Imports AutoNumeric
+Imports Automation
+Imports Cognex.VisionPro.ToolBlock
+Imports Cognex.VisionPro
+
+Imports System.Xml.Serialization
+Imports System.IO
+
+
+Public Class imageProcessEndEventArgs
+    Inherits EventArgs
+
+    ''' <summary>
+    ''' As 4x1
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property OutputPositionInUnit As Vector(Of Double)
+        Get
+            Return __unitCoord
+        End Get
+    End Property
+    ''' <summary>
+    ''' As 4x1
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property OutputPositionInPixels As Vector(Of Double)
+        Get
+            Return __pixelCoord
+        End Get
+    End Property
+
+    ReadOnly Property Result As CogToolResultConstants
+        Get
+            Return __result.Result
+        End Get
+    End Property
+
+    Dim __output As CogToolBlockTerminalCollection = Nothing
+    Dim __result As ICogRunStatus = Nothing
+
+    ''' <summary>
+    ''' As 4x1
+    ''' </summary>
+    ''' <remarks></remarks>
+    Dim __pixelCoord As Vector(Of Double) = Nothing
+    ''' <summary>
+    ''' As 4x1
+    ''' </summary>
+    ''' <remarks></remarks>
+    Dim __unitCoord As Vector(Of Double) = Nothing
+
+    Sub New(ByVal outputPosition As CogToolBlockTerminalCollection,
+            result As ICogRunStatus)
+        Me.__output = outputPosition
+        Me.__result = result
+
+        With __output
+            __pixelCoord = CognexVision.output2Vector(Me.__output)
+            __unitCoord = pixelCoord2unitCoord(__pixelCoord)
+        End With
+    End Sub
+
+    Shared pixel2mmRatio As Double = 0.00275
+    Shared xPixels As Double = 2590
+    Shared yPixels As Double = 1942
+
+    ''' <summary>
+    ''' Default Origin : Left-Up Corner
+    ''' Output Origin : FOV Center
+    ''' Default Y-axis : to bottom side of FOV
+    ''' Output Y-axis : to upper side of FOV
+    ''' </summary>
+    ''' <param name="pixelCoord"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Shared Function pixelCoord2unitCoord(pixelCoord As Vector(Of Double)) As Vector(Of Double)
+        Dim pixelCoordX = pixelCoord(0) - xPixels / 2
+        Dim pixelCoordY = (pixelCoord(1) - yPixels / 2) * -1
+        Return CreateVector.Dense(Of Double)({pixelCoordX * pixel2mmRatio,
+                                              pixelCoordY * pixel2mmRatio,
+                                              0,
+                                              1})
+    End Function
+
+End Class
+
+''' <summary>
+''' Used to trigger camera
+''' </summary>
+''' <remarks></remarks>
+Public Class imageProcessTriggerEventArgs
+    Inherits EventArgs
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Event ImageProcessDone(ByVal sender As Object, ByVal e As EventArgs)
+
+    ''' <summary>
+    ''' The cognex tool block object
+    ''' Contains some specific image process flow
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property ToolBlock As CogToolBlock
+        Get
+            Return __toolBlock
+        End Get
+    End Property
+
+    Dim WithEvents __toolBlock As CogToolBlock = Nothing
+
+    Sub New(__toolBlock As CogToolBlock)
+        Me.__toolBlock = __toolBlock
+    End Sub
+
+    ''' <summary>
+    ''' Regular the interface
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Sub toolBlockExecuted(sender As Object, e As EventArgs) Handles __toolBlock.Ran
+
+        With __toolBlock
+            RaiseEvent ImageProcessDone(Me, New imageProcessEndEventArgs(.Outputs,
+                                                                         .RunStatus))
+
+        End With
+        'TODO , output image , tagged with toolblock name
+    End Sub
+
+    ''' <summary>
+    ''' Mount on source event
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Shared Sub toolBlockExecute(sender As Object, e As imageProcessTriggerEventArgs)
+        '------------------
+        '   Initiate Runing
+        '------------------
+        e.ToolBlock.Run()
+    End Sub
+
+
+End Class
+
+
+''' <summary>
+''' Loading only
+''' </summary>
+''' <remarks></remarks>
+Public Class imageProcessSettingBlock
+    Inherits settingBase
+
+#Region "persistance interface"
+    Shared vppPath As String = My.Application.Info.DirectoryPath & "\Data\vpps\"
+    Public Overrides Property Filename As String
+        Get
+            If Not Directory.Exists(vppPath) Then
+                Directory.CreateDirectory(vppPath)
+            End If
+            Return String.Format("{0}{1}.vpp",
+                                 vppPath,
+                                 Me.ToString)
+        End Get
+        Set(value As String)
+
+        End Set
+    End Property
+#End Region
+
+
+    ReadOnly Property ToolBlock As CogToolBlock
+        Get
+            Return __toolBlock
+        End Get
+    End Property
+    Dim __toolBlock As CogToolBlock = Nothing
+
+    ''' <summary>
+    ''' In percentage representation
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property LightDensity As Double = 1.0F
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <remarks></remarks>
+    Sub reloadVppObject(sender As Object, e As EventArgs) Handles Me.PropertyChanged
+        'Load cog block
+        __toolBlock = TryCast(CogSerializer.LoadObjectFromFile(Me.Filename), CogToolBlock)
+        If __toolBlock Is Nothing Then
+            MessageBox.Show(String.Format("vpp loading failed, {0}",
+                                           Me.Filename))
+        End If
+    End Sub
+
+    Sub New(Optional tag As Object = "calibration")
+        Me.tag = tag
+    End Sub
+    ''' <summary>
+    ''' For loading use
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Sub New()
+
+    End Sub
+
+    Dim tag As Object = "calibration"
+    Public Overrides Function ToString() As String
+        Return String.Format("{0}",
+                             tag)
+    End Function
+End Class

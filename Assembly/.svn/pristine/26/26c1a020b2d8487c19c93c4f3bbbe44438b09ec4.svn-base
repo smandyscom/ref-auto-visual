@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MechanismNominal xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <C1x>0</C1x>
+  <C1y>0</C1y>
+  <C1z>0</C1z>
+  <C2x>0</C2x>
+  <C2y>0</C2y>
+  <C2z>0</C2z>
+  <C3x>0</C3x>
+  <C3y>0</C3y>
+  <C3z>0</C3z>
+  <C4x>0</C4x>
+  <C4y>0</C4y>
+  <C4z>0</C4z>
+  <S0x>0</S0x>
+  <S0y>0</S0y>
+  <S0z>0</S0z>
+  <Y0x>0</Y0x>
+  <Y0y>0</Y0y>
+  <Y0z>0</Y0z>
+  <Lx>0</Lx>
+  <Ly>0</Ly>
+  <Lz>0</Lz>
+</MechanismNominal>

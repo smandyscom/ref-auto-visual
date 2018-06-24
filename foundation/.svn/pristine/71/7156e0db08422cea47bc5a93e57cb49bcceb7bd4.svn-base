@@ -1,0 +1,272 @@
+﻿Imports Automation
+Imports Automation.Components.CommandStateMachine
+Imports Automation.Components.Services
+Imports Automation.mainIOHardware
+''' <summary>
+''' ASA-04-273上料機開始使用
+''' 檢查站在前N站，只看取得的結果
+''' 可看N道輸送帶，放片目的地依wafer的內容而定，可多個目的地
+''' ''' </summary>
+''' <remarks></remarks>
+Public Class clsNgPickerV3
+    Inherits systemControlPrototype
+    Implements IFinishableStation
+
+    Public Event BrokenWaferRemoved(ByVal sender As Object, ByVal e As EventArgs)
+
+#Region "External Data declare"
+    Public Property SourcePosition As New List(Of ngChecker)
+    'Hsien , 2015.06.11
+    ReadOnly Property NgData As shiftDataPackBase
+        'The data picker had picked from source
+        Get
+            Return __ngData
+        End Get
+    End Property
+    Property GetTargetNgBin As Func(Of Integer, shiftDataPackBase, ngBin) 'lane index, wafer data, target position index
+    'Hsien , open parameter to setting , 201507.22
+    Property VacummGeneratingTime As TimeSpan = New TimeSpan(0, 0, 1)
+    Property VacummBreakTime As TimeSpan = New TimeSpan(0, 0, 1)
+    Public Property FinishableFlags As New flagController(Of IFinishableStation.controlFlags) Implements IFinishableStation.FinishableFlags
+    Public Property UpstreamStations As List(Of IFinishableStation) Implements IFinishableStation.UpstreamStations
+
+#End Region
+#Region "Device declare"
+    Public motorNgPicker As motorControl = New motorControl
+    Public cyDown As cylinderControl = New cylinderControl() '上下氣缸
+
+    Public doVacuum As ULong = 0
+    Public doVBreak As ULong = 0
+    Public spIsOccupied As ULong
+
+
+    'Property Vs As sensorControl = New sensorControl()
+#End Region
+#Region "Data declare"
+    Dim tmr As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 1)}
+    Dim SourcePositionIndex As Short
+
+    Dim __ngData As shiftDataPackBase = Nothing   'Hsien , 2015.06.11 , used to store data
+    Dim motorPointPickPointer As cMotorPoint
+    Dim _ngBin As ngBin
+
+#End Region
+
+    Protected Function stateIgnite() As Integer
+        Select Case CType(systemSubState, stateIgniteEnum)
+            Case stateIgniteEnum._0
+                If FinishableFlags.viewFlag(IFinishableStation.controlFlags.COMMAND_IGNITE) = True Then
+                    systemSubState = stateIgniteEnum._5
+                End If
+            Case stateIgniteEnum._5
+                If cyDown.drive(cylinderControl.cylinderCommandEnum.GO_OFF_END) = cylinderControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._10
+                End If
+            Case stateIgniteEnum._10
+                If motorNgPicker.drive(motorControl.motorCommandEnum.GO_HOME) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._20
+                End If
+            Case stateIgniteEnum._20
+                If motorNgPicker.drive(motorControl.motorCommandEnum.GO_POSITION, SourcePosition(0).pickPoint) = motorControl.statusEnum.EXECUTION_END Then
+                    FinishableFlags.writeFlag(IFinishableStation.controlFlags.COMMAND_IGNITE, False)
+                    systemMainState = systemStatesEnum.EXECUTE
+                    'systemSubState = 0 '不需要，會自動歸0
+                End If
+        End Select
+        Return 0
+    End Function
+    Sub alarmOccursHandler() Handles CentralAlarmObject.alarmOccured, PauseBlock.InterceptedEvent
+        'Hsien , pause the motor motion anytime , 2015.07.14
+        'If (MainState = systemStatesEnum.IGNITE) Then
+        motorNgPicker.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+        'End If
+    End Sub
+    Sub alarmReleaseHandler() Handles CentralAlarmObject.alarmReleased, PauseBlock.UninterceptedEvent
+        'If (MainState = systemStatesEnum.IGNITE) Then
+        motorNgPicker.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+        'End If
+    End Sub
+    Protected Function stateExecute() As Integer
+        Excute(systemSubState)
+        Return 0
+    End Function
+    Function Excute(ByRef cStep As ExcuteEnum) As Integer
+
+        'auto reset module action
+        ' release condition : target position hadoccupied and is not the ng thing , or target position had not occupied
+        SourcePosition.ForEach(Sub(obj As ngChecker)
+                                   If obj.WaferData.Invoke.ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) = True Then
+                                       If (obj.WaferData.Invoke.IsPositionOccupied = True AndAlso obj.isNg.Invoke = False) OrElse
+                                           obj.WaferData.Invoke.IsPositionOccupied = False Then
+                                           obj.WaferData.Invoke.ModuleAction.writeFlag(interlockedFlag.POSITION_OCCUPIED, False)
+                                       End If
+                                   End If
+                               End Sub)
+
+        Select Case cStep
+            Case ExcuteEnum._0
+                '檢查進料處錄出料處任務
+                For i As Short = 0 To SourcePosition.Count - 1
+                    If SourcePosition(i).WaferData.Invoke.ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) = True AndAlso
+                         SourcePosition(i).WaferData.Invoke.IsPositionOccupied = True AndAlso SourcePosition(i).isNg.Invoke = True Then
+
+                        __ngData = SourcePosition(i).WaferData.Invoke.Clone  'Hsien , 2015.6.11
+                        SourcePositionIndex = i
+                        _ngBin = GetTargetNgBin(i, __ngData)
+                        cStep = ExcuteEnum._10
+                        Exit For
+                    Else
+                        'reset module action
+                        SourcePosition(i).WaferData.Invoke.ModuleAction.writeFlag(interlockedFlag.POSITION_OCCUPIED, False)
+                    End If
+                Next
+            Case ExcuteEnum._10
+                'get motor point
+                motorPointPickPointer = SourcePosition(SourcePositionIndex).pickPoint
+                motorNgPicker.drive(motorControl.motorCommandEnum.GO_POSITION, motorPointPickPointer)
+
+                cStep = ExcuteEnum._20
+
+            Case ExcuteEnum._20 '移至取片位置
+                If motorNgPicker.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+                    cStep = ExcuteEnum._100
+                End If
+            Case ExcuteEnum._100 '氣缸下
+                If cyDown.drive(cylinderControl.cylinderCommandEnum.GO_ON_END) = cylinderControl.statusEnum.EXECUTION_END Then
+                    cStep = ExcuteEnum._110
+                End If
+            Case ExcuteEnum._110 '開真空
+                writeBit(doVacuum, True)
+                'tmr.TimerGoal = New TimeSpan(0, 0, 0.2) : tmr.IsEnabled = True 'Hsien , wrong argument
+                'tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 500)
+                tmr.TimerGoal = VacummGeneratingTime
+                tmr.IsEnabled = True
+
+                cStep = ExcuteEnum._120
+            Case ExcuteEnum._120 '真空確認或timeout當作吸到
+                If tmr.IsTimerTicked = True Then
+                    cStep = ExcuteEnum._130
+                End If
+            Case ExcuteEnum._130 '氣缸上
+                If cyDown.drive(cylinderControl.cylinderCommandEnum.GO_OFF_END) = cylinderControl.statusEnum.EXECUTION_END Then
+                    With SourcePosition(SourcePositionIndex).WaferData.Invoke
+                        .IsPositionOccupied = False
+                        .ModuleAction.writeFlag(interlockedFlag.POSITION_OCCUPIED, False)  'reset module action
+                    End With
+                    cStep = ExcuteEnum._140
+                End If
+            Case ExcuteEnum._140
+                If readBit(spIsOccupied) = True Then
+                    cStep = ExcuteEnum._200
+                ElseIf tmr.IsTimerTicked = True Then
+                    ' ======
+                End If
+            Case ExcuteEnum._200
+                If motorNgPicker.drive(motorControl.motorCommandEnum.GO_POSITION, _ngBin.placePoint) = motorControl.statusEnum.EXECUTION_END Then
+                    cStep = ExcuteEnum._210
+                End If
+            Case ExcuteEnum._210
+                writeBit(doVacuum, False) '關真空
+                writeBit(doVBreak, True)
+                'tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 500)
+                tmr.TimerGoal = VacummBreakTime
+                tmr.IsEnabled = True
+                cStep = ExcuteEnum._220
+            Case ExcuteEnum._220
+                If tmr.IsTimerTicked = True Then
+                    writeBit(doVBreak, False)
+                    tmr.IsEnabled = True
+
+                    RaiseEvent BrokenWaferRemoved(Me, Nothing)  'Hsien ,  2015.05.27
+
+                    cStep = ExcuteEnum._300
+                End If
+
+
+            Case ExcuteEnum._300
+                If _ngBin.spNgBinFull.IsSensorCovered = True AndAlso tmr.IsTimerTicked = True Then
+                    Dim ap As New alarmContentSensor
+                    With ap
+                        .Sender = Me
+                        .Inputs = _ngBin.spNgBinFull.InputBit
+                        .PossibleResponse = alarmContextBase.responseWays.RETRY
+                        .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                        .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                                     systemSubState = ExcuteEnum._220
+                                                                                     Return True
+                                                                                 End Function
+                        CentralAlarmObject.raisingAlarm(ap)
+                    End With
+                ElseIf _ngBin.spNgBinFull.IsSensorCovered = False Then
+                    cStep = ExcuteEnum._310
+                End If
+            Case ExcuteEnum._310
+                If motorNgPicker.drive(motorControl.motorCommandEnum.GO_POSITION, motorPointPickPointer) = motorControl.statusEnum.EXECUTION_END Then
+                    cStep = ExcuteEnum._0
+                End If
+        End Select
+        Return 0
+    End Function
+    Public Class ngChecker
+        Property pickPoint As cMotorPoint
+        Property WaferData As Func(Of shiftDataPackBase)
+        Property isNg As Func(Of Boolean)
+    End Class
+    Public Class ngBin
+        Property placePoint As cMotorPoint
+        Property spNgBinFull As sensorControl
+    End Class
+    Function initMappingAndSetup() As Integer
+        With relatedFlags
+            .AddRange(FinishableFlags.FlagElementsArray)
+        End With
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        systemMainState = systemStatesEnum.IGNITE
+        initEnableAllDrives() 'enable 此class裡所有的driveBase
+        Return 0
+    End Function
+
+    Public Sub New()
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf Me.initMappingAndSetup))
+    End Sub
+    Enum stateIgniteEnum As Integer
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _120
+        _300
+        _200
+
+        _5
+
+    End Enum
+    Enum ExcuteEnum
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _120
+        _300
+        _200
+        _1000
+
+        _130
+
+        _210
+
+        _220
+
+        _310
+
+        _140
+
+    End Enum
+End Class

@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<mappingSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <headString>Imports Automation
+Partial Public Class dataBaseMain
+Sub {0}()
+ </headString>
+  <tailString>    End Sub
+End Class
+</tailString>
+  <fullFormat>	{0} ' {1} {2}
+</fullFormat>
+  <simpleFormat>	{0} ' {1}
+</simpleFormat>
+  <nameColumn>6</nameColumn>
+  <idColumn>0</idColumn>
+  <comment>2</comment>
+  <sheetIndex>6</sheetIndex>
+</mappingSet>

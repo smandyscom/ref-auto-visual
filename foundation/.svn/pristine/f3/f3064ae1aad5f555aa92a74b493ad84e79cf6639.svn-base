@@ -1,0 +1,525 @@
+﻿Imports Automation
+Imports Automation.Components.CommandStateMachine
+Imports Automation.Components.Services
+'安全距離: neighbor position + my position < 設定的安全距離
+Imports Automation.mainIOHardware
+Public Class clsUnloadingPicker
+    Inherits systemControlPrototype
+    Implements IFinishableStation
+    Implements ITaskDispatchable
+
+    ReadOnly Property IndexOfPlacingLane As Integer
+        'reflect which lane is going to place , Hsien , 2015.05.22
+        Get
+            Return rowPlaceCollection.IndexOf(rowPlacePointer)
+        End Get
+    End Property
+    Public Event WaferHadPlaced(ByVal sender As Object, ByVal e As EventArgs)   'Hsien , mark the point when wafer had placed to tray
+
+
+    '-------------------------------
+    '   Data interface , for task
+    '-------------------------------
+    Public Property TaskData As shiftDataCollection Implements ITaskDispatchable.TaskData
+    Property TrayData As Func(Of shiftDataPackBase) Implements IModuleSingle.TargetPositionInfo '待取料的位置的集合
+    Public Property LoaderTaskData As shiftDataCollection Implements ITaskDispatchable.InterlockData
+
+
+#Region "External Data declare"
+    Property safeDistance As Double '設定安全的距離，必須在設定頁面設定
+    Property rowPlaceCollection As List(Of shiftDataCollection) '待放區的集合 dimension 0 as place row index, dimension 1 as wafer position index
+    Friend rowPlacePointer As shiftDataCollection 'List(Of Func(Of shiftDataPackBase)) 'place row pointer , as shiftdatapackcollection
+
+    Property rowGripperCollection As New List(Of clsRowGripper) '雙排吸嘴真空
+    Protected rowGripperPointer As clsRowGripper
+
+    Function ___trayData() As trayDataBase
+        Return CType(TrayData.Invoke, trayDataBase)
+    End Function
+    '對下料手而言，離手最遠的row是第0排。cyGripperDown1是離tray最近的吸嘴排。
+    Property motorPointPlaceCollection As List(Of cMotorPoint) '抓手放料的位置的集合(順序為 '抓手1放至輸送帶1, 抓手2放至輸送帶2, 抓手1放至輸送帶2, 抓手2放至輸送帶1)
+    Property motorPointPickCollection As List(Of cMotorPoint) '抓手取料的位置的集合(即tray盤取片的位置 01,23,45)
+    Property motorPointPlaceInitial As cMotorPoint '抓手1放輸送帶的位置(做為初始化的位置)
+
+    Public GetPlacePoint As Func(Of clsRowGripper, shiftDataCollection, Object)  '由Integer(rowIndex)取得馬達位置
+    Public GetPrePlacePoint As Func(Of clsRowGripper, shiftDataCollection, Object) =
+    Function(rowGripper As clsRowGripper, pickRow As shiftDataCollection) As Object
+        Return {motorPointPlaceInitial, cylinderControlTwin.cylinderCommands.GO_A_END, rowGripper, pickRow}
+    End Function 'default function return 
+
+    Public GetPickPoint As Func(Of Integer, cMotorPoint)  '由Integer(rowIndex)取得馬達位置
+    Public IsAbleMove As Func(Of cMotorPoint, Boolean) '取得上料手的位置與目的地，及自己(下料手)的位置與目的地，來互鎖
+    Public Property FinishableFlags As New flagController(Of IFinishableStation.controlFlags) Implements IFinishableStation.FinishableFlags
+    Public Property UpstreamStations As List(Of IFinishableStation) Implements IFinishableStation.UpstreamStations
+
+    Public gripperDownDelayTimePick As New TimeSpan(0, 0, 0, 0, 200)
+    Public gripperDownDelayTimePlace As New TimeSpan(0, 0, 0, 0, 200)   'Hsien , 2015.10.15 , seperate settings
+
+
+    '-------------------------------------
+    '   Hsien , 2015.11.1 , pick method 
+    '-------------------------------------
+    Protected processState As Integer = 0
+    Protected Overridable Function pickMethod(ByRef state As Integer) As Boolean
+        'the original verison for MAIA
+        Select Case state
+            Case 0
+                rowGripperCollection.ForEach(Sub(obj As clsRowGripper) obj.cyDown.drive(cylinderControl.cylinderCommandEnum.GO_ON_END))
+                state = 5
+            Case 5 'check cylinder down 
+                If rowGripperCollection.TrueForAll(Function(obj As clsRowGripper) (obj.cyDown.CommandEndStatus = cylinderControl.statusEnum.EXECUTION_END)) Then
+                    __timer.TimerGoal = gripperDownDelayTimePick
+                    __timer.IsEnabled = True
+                    state = 10
+                End If
+            Case 10 '吸嘴已向下，去看每一片位置是否要吸取
+
+                Dim isSensorSensed As Boolean = False
+
+                If __timer.IsTimerTicked = True Then
+
+                    For gripperGroupIndex = 0 To rowGripperCollection.Count - 1
+                        For gripperIndex = 0 To rowGripperCollection(gripperGroupIndex).grippers.Count - 1
+
+                            isSensorSensed = readBit(rowGripperCollection(gripperGroupIndex).grippers(gripperIndex).Vs) 'fetch the sensing result
+
+                            With CType(___trayData.DataCollection(rowIndex + gripperGroupIndex), shiftDataCollection).DataCollection(gripperIndex)
+
+                                If (.IsPositionOccupied Or isSensorSensed) Then
+                                    writeBit(rowGripperCollection(gripperGroupIndex).grippers(gripperIndex).Vg, True)
+                                    .IsPositionOccupied = True
+                                End If
+
+                                If .IsPositionOccupied And isSensorSensed Then
+                                    'Hsien , 2016.01.21 ' Record existed and Sensor sensed , start suck up
+                                    'writeBit(rowGripperCollection(gripperGroupIndex).grippers(gripperIndex).Vg, True)
+                                ElseIf (Not .IsPositionOccupied And isSensorSensed) Then
+                                    'condition : unknown (not existed in record , but sensor sensed)
+                                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Unknown{0}{1}",
+                                                                                            rowIndex + gripperGroupIndex,
+                                                                                            gripperIndex))
+                                ElseIf (.IsPositionOccupied And Not isSensorSensed) Then
+                                    'condition : loss (existed in record , but sensor not sensed)
+                                    sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Loss{0}{1}",
+                                                                                            rowIndex + gripperGroupIndex,
+                                                                                            gripperIndex))
+                                    '.IsPositionOccupied = False
+                                End If
+
+
+
+                            End With
+                        Next
+                    Next
+
+                    __timer.TimerGoal = New TimeSpan(0, 0, 0, 0, 200)
+                    __timer.IsEnabled = True
+                    state = 20
+                Else
+                    '-----------------
+                    'timer is counting
+                    '-----------------
+                End If
+            Case 20 'set cylinder up
+                If __timer.IsTimerTicked Then
+                    rowGripperCollection.ForEach(Sub(__gripper As clsRowGripper) __gripper.cyDown.drive(cylinderControl.cylinderCommandEnum.GO_OFF_END))
+                    state = 30
+                End If
+            Case 30 'check cylinder up
+                If (rowGripperCollection.TrueForAll(Function(__gripper As clsRowGripper) __gripper.cyDown.CommandEndStatus = cylinderControl.statusEnum.EXECUTION_END)) Then
+                    Return True
+                End If
+        End Select
+
+        Return False
+    End Function
+
+#End Region
+#Region "Device declare"
+    Public motorPicker As motorControl = New motorControl With {.TimeoutLimit = New TimeSpan(0, 1, 30)}
+    Public cyShift As cylinderControlTwin = New cylinderControlTwin '橫移氣缸
+
+#End Region
+#Region "Data declare"
+    Protected __timer As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 1)}
+    Protected rowIndex As Integer
+
+    Dim currentMotorPoint As cMotorPoint '放至輸送帶
+
+#End Region
+
+    Enum stateIgniteEnum
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _120
+        _300
+        _200
+
+        _5
+
+    End Enum
+    Enum ExcuteEnum
+        WAIT_TASK_COMING
+        PRE_CHECK   'check if able to move , Hsien , 2015.10.29
+        PRE_ACTION
+        '---------------------------
+        '   Pick wafer procedure
+        '---------------------------
+        UNLOAD_PICK_STARTED
+        _25
+        PICK_METHOD_INVOKED
+        _40
+        _41
+        _42
+        _50
+        _60
+        '--------------------------
+        '   Moving Procedure
+        '--------------------------
+        CHECK_IF_HOLDING
+        _110
+        _120
+        _200
+        '-------------------------
+        '   Place Wafer Procedures
+        '--------------------------
+        _600
+        _605
+        _610
+        _620
+        _630
+        _640
+        _650
+        _660
+    End Enum
+
+    Protected Function stateIgnite() As Integer
+        Select Case systemSubState
+            Case stateIgniteEnum._0
+                If FinishableFlags.viewFlag(IFinishableStation.controlFlags.COMMAND_IGNITE) = True Then
+                    systemSubState = stateIgniteEnum._5
+                End If
+            Case stateIgniteEnum._5
+                rowGripperCollection.ForEach(Sub(rowGripper As clsRowGripper)
+                                                 rowGripper.cyDown.drive(cylinderControl.cylinderCommandEnum.GO_OFF_END)
+                                             End Sub)
+                cyDrive(cyShift, cylinderControlTwin.cylinderCommands.GO_A_END) '回原點
+                systemSubState = stateIgniteEnum._10
+            Case stateIgniteEnum._10
+                If rowGripperCollection.TrueForAll(Function(rowGripper As clsRowGripper) As Boolean
+                                                       Return rowGripper.cyDown.CommandEndStatus = cylinderControl.statusEnum.EXECUTION_END
+                                                   End Function) AndAlso
+                     (cyShift Is Nothing OrElse cyShift.CommandEndStatus = IDrivable.endStatus.EXECUTION_END) Then
+                    systemSubState = stateIgniteEnum._20
+                End If
+            Case stateIgniteEnum._20
+                If motorPicker.drive(motorControl.motorCommandEnum.GO_HOME) = motorControl.statusEnum.EXECUTION_END Then
+                    currentMotorPoint = motorPointPlaceInitial
+                    systemSubState = stateIgniteEnum._30
+                End If
+            Case stateIgniteEnum._30
+                If motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = stateIgniteEnum._100
+                End If
+            Case stateIgniteEnum._100
+                FinishableFlags.writeFlag(IFinishableStation.controlFlags.COMMAND_IGNITE, False)
+                systemMainState = systemStatesEnum.EXECUTE
+        End Select
+
+        Return 0
+    End Function
+    
+    Sub alarmOccursHandler(sender As Object, e As alarmEventArgs) Handles CentralAlarmObject.alarmOccured, PauseBlock.InterceptedEvent
+        If (MainState = systemStatesEnum.IGNITE) Then
+            motorPicker.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+        End If
+    End Sub
+    Sub alarmReleaseHandler(sender As Object, e As alarmEventArgs) Handles CentralAlarmObject.alarmReleased, PauseBlock.UninterceptedEvent
+        If (MainState = systemStatesEnum.IGNITE) Then
+            motorPicker.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+        End If
+    End Sub
+    Protected Function stateExecute() As Integer
+
+        Static cylinderCommand As cylinderControlTwin.cylinderCommands
+        Select systemSubState
+            Case ExcuteEnum.WAIT_TASK_COMING '查看module action 及 是否要等前一站做完
+                If TaskData IsNot Nothing AndAlso
+                    TaskData.DataCollection.Exists(Function(__rowTask As shiftDataPackBase) (__rowTask.IsPositionOccupied)) Then
+                    '-------------------------------------
+                    'Unloading Task had found
+                    '-------------------------------------
+                    rowIndex = TaskData.DataCollection.FindIndex(Function(__rowTask As shiftDataPackBase) (__rowTask.IsPositionOccupied))
+                    rowIndex = Math.Truncate(rowIndex / rowGripperCollection.Count) * rowGripperCollection.Count   ' have to be multiple of row gripper , take the quotient part
+                    'Hsien , for rowIndex = 1 existed wafer , gripper would move to rowIndex=0 position , then vacuum on for gripper row 1
+
+
+                    currentMotorPoint = GetPickPoint(rowIndex)  'get row need to unload
+                    systemSubState = ExcuteEnum.UNLOAD_PICK_STARTED
+                Else
+                    '--------------------------------------
+                    'No unloading task comes (IDLE)
+                    '---------------------------------------
+
+                    If (LoaderTaskData IsNot Nothing AndAlso
+                        LoaderTaskData.DataCollection.TrueForAll(Function(__loadingTask As shiftDataPackBase) (Not __loadingTask.IsPositionOccupied))) Then
+                        '-------------------------------------------------
+                        '   Loader task had finished
+                        '   go to initial position (first row)
+                        '-------------------------------------------------
+                        currentMotorPoint = GetPickPoint(0)
+                        systemSubState = ExcuteEnum.PRE_CHECK
+                    ElseIf (Not currentMotorPoint.Equals(motorPointPlaceInitial)) Then
+                        '-------------------------------------------------
+                        '   Loader task had not finished , and not in initial position
+                        '-------------------------------------------------
+                        'go to conveyor position
+                        currentMotorPoint = motorPointPlaceInitial
+                        systemSubState = ExcuteEnum.PRE_CHECK
+                    End If
+
+
+                    '查看上游站是否已收料結束
+                    If UpstreamStations.TrueForAll(Function(obj As IFinishableStation) (obj.FinishableFlags.viewFlag(IFinishableStation.controlFlags.STATION_FINISHED) = True)) = True Then
+                        FinishableFlags.setFlag(IFinishableStation.controlFlags.STATION_FINISHED)
+                    End If
+                    If UpstreamStations.Exists(Function(upStation As IFinishableStation) (Not upStation.FinishableFlags.viewFlag(IFinishableStation.controlFlags.STATION_FINISHED))) And
+                        FinishableFlags.viewFlag(IFinishableStation.controlFlags.STATION_FINISHED) Then
+                        FinishableFlags.resetFlag(IFinishableStation.controlFlags.STATION_FINISHED) '清除自己收料結束
+                    End If
+
+                End If
+
+            Case ExcuteEnum.PRE_CHECK
+                'moving before check , avoiding collision error , Hsien  ,2015.10.29
+                If (IsAbleMove(currentMotorPoint)) Then
+                    systemSubState = ExcuteEnum.PRE_ACTION
+                End If
+            Case ExcuteEnum.PRE_ACTION
+                If (motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint) = motorControl.statusEnum.EXECUTION_END) Then
+                    systemSubState = ExcuteEnum.WAIT_TASK_COMING
+                End If
+
+
+            Case ExcuteEnum.UNLOAD_PICK_STARTED '移至該排位置, set cylinder down
+                If IsAbleMove(currentMotorPoint) = True Then
+                    'motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint)
+                    systemSubState = ExcuteEnum._25
+                End If
+            Case ExcuteEnum._25
+                'arrived on unloading row
+                If motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = ExcuteEnum.PICK_METHOD_INVOKED
+                End If
+            Case ExcuteEnum.PICK_METHOD_INVOKED 'check cylinder down 
+                If (pickMethod(processState)) Then
+                    processState = 0   'reset
+                    systemSubState = ExcuteEnum._50
+                End If
+            Case ExcuteEnum._50 '將該兩排的Data移至抓手上
+                For i = 0 To rowGripperCollection.Count - 1
+                    rowGripperCollection(i).rowWaferInfo.Assign(___trayData.DataCollection(rowIndex + i)) 'assign data from tray to gripper 1
+                    CType(___trayData.DataCollection(rowIndex + i), shiftDataCollection).DataCollection.ForEach(Sub(obj As shiftDataPackBase) obj.IsPositionOccupied = False)  'clear tray wafer occupied status
+
+                    'target row had picked , mark out the task 
+                    TaskData.DataCollection(rowIndex + i).IsPositionOccupied = False
+                Next
+                systemSubState = ExcuteEnum.CHECK_IF_HOLDING
+
+            Case ExcuteEnum.CHECK_IF_HOLDING '判斷要移到哪個輸送帶
+                '確認哪排手有料
+                '確認哪排位置可放
+                '優先順序
+                '1. 內側手放內側輸送帶
+                '2. 外側手放外側輸送帶
+                '3. 外側手放內側輸送帶
+                '4. 內側手被外側輸送帶(必須動氣缸)
+
+                '檢查所有的吸嘴排是否都放片完成
+                rowGripperPointer = rowGripperCollection.Find(Function(rowGripper As clsRowGripper) (rowGripper.rowWaferInfo.IsAnyRemained))
+
+                If rowGripperPointer Is Nothing Then '找不到還吸著料的吸嘴
+                    '全部放完，移回第10步 , job finished
+                    systemSubState = ExcuteEnum.WAIT_TASK_COMING
+                Else
+                    systemSubState = ExcuteEnum._110
+                End If
+
+            Case ExcuteEnum._110 '檢查哪個放料排可放料
+                rowPlacePointer = rowPlaceCollection.Find(Function(placeRow As shiftDataCollection) As Boolean
+                                                              Return placeRow.DataCollection(0).ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) And
+                                                              placeRow.DataCollection.TrueForAll(Function(obj As shiftDataPackBase) (Not obj.IsPositionOccupied))
+                                                          End Function)
+
+
+                If rowPlacePointer Is Nothing Then '沒有任何的待放排可放料
+
+                    '檢查馬達位置是否在待放排上方，若否，則移動至第0個待放排上方
+                    If motorPointPlaceCollection.Contains(currentMotorPoint) = False Then
+                        Dim obj As Array = GetPrePlacePoint(rowGripperPointer, rowPlacePointer)
+                        currentMotorPoint = obj(0)
+                        cylinderCommand = obj(1) 'cylinderControlTwin.cylinderCommands.GO_A_END
+                        rowGripperPointer = obj(2)
+                        rowPlacePointer = obj(3)
+                        motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint)
+                        cyDrive(cyShift, cylinderCommand)
+                        systemSubState = ExcuteEnum._120
+                    End If
+                Else '已找出待取排的位置
+                    Dim obj As Array = GetPlacePoint(rowGripperPointer, rowPlacePointer)
+                    currentMotorPoint = obj(0)
+                    cylinderCommand = obj(1)
+                    rowGripperPointer = obj(2)
+                    rowPlacePointer = obj(3)
+                    motorPicker.drive(motorControl.motorCommandEnum.GO_POSITION, currentMotorPoint)
+                    cyDrive(cyShift, cylinderCommand)
+                    systemSubState = ExcuteEnum._200
+                End If
+            Case ExcuteEnum._120 '預先移動至輸送帶正上方
+                If motorPicker.CommandEndStatus = motorControl.statusEnum.EXECUTION_END AndAlso
+                   (cyShift Is Nothing OrElse cyShift.CommandEndStatus = IDrivable.endStatus.EXECUTION_END) Then
+                    systemSubState = ExcuteEnum._110
+                End If
+
+                '移動馬達、氣缸至選定的輸送帶
+            Case ExcuteEnum._200
+                If motorPicker.CommandEndStatus = motorControl.statusEnum.EXECUTION_END AndAlso
+                   (cyShift Is Nothing OrElse cyShift.CommandEndStatus = IDrivable.endStatus.EXECUTION_END) Then
+                    systemSubState = ExcuteEnum._600
+                End If
+                'rowGripperPointer 放片至 TargetConveyorPointer
+            Case ExcuteEnum._600 'cy下
+                If rowGripperPointer.cyDown.drive(cylinderControl.cylinderCommandEnum.GO_ON_END) = cylinderControl.statusEnum.EXECUTION_END Then
+                    __timer.TimerGoal = gripperDownDelayTimePlace : __timer.IsEnabled = True
+                    systemSubState = ExcuteEnum._605
+                End If
+            Case ExcuteEnum._605
+                If __timer.IsTimerTicked = True Then
+                    For i As Short = 0 To rowGripperPointer.grippers.Count - 1
+                        writeBit(rowGripperPointer.grippers(i).Vg, False) '關真空
+                        writeBit(rowGripperPointer.grippers(i).Vb, True) '開破壞
+                    Next
+                    __timer.TimerGoal = New TimeSpan(0, 0, 0, 0, 100) : __timer.IsEnabled = True
+                    systemSubState = ExcuteEnum._610
+                End If
+            Case ExcuteEnum._610 '關破壞
+                If __timer.IsTimerTicked = True Then
+                    For i As Short = 0 To rowGripperPointer.grippers.Count - 1
+                        writeBit(rowGripperPointer.grippers(i).Vb, False) '關破壞
+                    Next
+                    systemSubState = ExcuteEnum._620
+                End If
+            Case ExcuteEnum._620 '將wafer資料轉移至輸送帶 later
+                systemSubState = ExcuteEnum._630
+            Case ExcuteEnum._630 'set cylinder up
+                For i As Integer = 0 To rowGripperCollection.Count - 1
+                    rowGripperCollection(i).cyDown.drive(cylinderControl.cylinderCommandEnum.GO_OFF_END)
+                Next
+                systemSubState = ExcuteEnum._640
+            Case ExcuteEnum._640 'check cylinder up
+                Dim allCyDone As Boolean = True
+                For i As Integer = 0 To rowGripperCollection.Count - 1
+                    If rowGripperCollection(i).cyDown.CommandEndStatus <> cylinderControl.statusEnum.EXECUTION_END Then
+                        allCyDone = False
+                        Exit For
+                    End If
+                Next
+                If allCyDone = True Then
+                    systemSubState = ExcuteEnum._650
+                End If
+            Case ExcuteEnum._650 '將wafer資料轉移至輸送帶
+                ' had placed , and doing data moving , Hsien , 2015.05.22
+                For i As Integer = 0 To rowGripperPointer.rowWaferInfo.DataCount - 1
+
+                    rowPlacePointer.DataCollection(i).Assign(rowGripperPointer.rowWaferInfo.DataCollection(i))  'wafer by wafer data assignment , Hsien  2015.05.22
+                    rowPlacePointer.DataCollection(i).ModuleAction.resetFlag(interlockedFlag.POSITION_OCCUPIED)  'Hsien ,  alway reset flag , 2015.05.15
+                    rowGripperPointer.rowWaferInfo.DataCollection(i).IsPositionOccupied = False 'reset wafer data in rowGripperPointer
+
+                Next
+                rowPlacePointer.DataCollection(0).ModuleAction.writeFlag(interlockedFlag.POSITION_OCCUPIED, False) '通知輸送帶放片完成
+                cyDrive(cyShift, cylinderControlTwin.cylinderCommands.GO_A_END)
+
+                RaiseEvent WaferHadPlaced(Me, Nothing)  'Hsien , 2015.05.22 , used to do wafer data marking , and MES reporting
+
+                systemSubState = ExcuteEnum._660
+            Case ExcuteEnum._660
+                If cyShift Is Nothing OrElse cyShift.CommandEndStatus = IDrivable.endStatus.EXECUTION_END Then
+                    systemSubState = ExcuteEnum.CHECK_IF_HOLDING
+                End If
+
+            Case Else
+                Throw New Exception("State was not implemented")
+        End Select
+
+        '-------------------------------------------
+        'check unloading conveyors's  module action
+        ' (Releasing Conveyor when following Condition satisfied)
+        '-------------------------------------------
+        rowPlaceCollection.ForEach(Sub(placingRow As shiftDataCollection)
+                                       If placingRow.DataCollection(0).ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) Then
+                                           '輸送帶上待放片位置還有片
+                                           '抓手上都是空的，把module action 清除
+                                           If placingRow.DataCollection.Exists(Function(obj As shiftDataPackBase) obj.IsPositionOccupied) Or
+                                               rowGripperCollection.TrueForAll(Function(rowGripper As clsRowGripper) (Not rowGripper.rowWaferInfo.IsAnyRemained)) Then
+
+                                               placingRow.DataCollection(0).ModuleAction.resetFlag(interlockedFlag.POSITION_OCCUPIED)
+
+                                           End If
+                                       Else
+                                           '----------------------
+                                           ' Wait invoke
+                                           '----------------------
+                                       End If
+                                   End Sub)
+
+        Return 0
+    End Function
+
+    Function initMappingAndSetup() As Integer
+
+        With relatedFlags
+            .AddRange(FinishableFlags.FlagElementsArray)
+        End With
+
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        systemMainState = systemStatesEnum.IGNITE
+        initEnableAllDrives() 'enable 此class裡所有的driveBase
+
+        Return 0
+    End Function
+    Private Sub cyDrive(cy As cylinderControlTwin, ByVal command As cylinderControlTwin.cylinderCommands)
+        If cy Is Nothing Then Exit Sub
+        cy.drive(command)
+    End Sub
+
+    Public Sub New()
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf Me.initMappingAndSetup))
+    End Sub
+
+End Class
+Public Class clsGripper
+    Public Vg As ULong = 0
+    Public Vs As ULong = 0
+    Public Vb As ULong = 0
+End Class
+Public Class clsRowGripper
+    Public grippers As List(Of clsGripper)
+    Public cyDown As cylinderControl
+    Public rowWaferInfo As shiftDataCollection
+End Class
+''' <summary>
+''' 同一位置只有一個module action, 但有多個module在同一個位置上工作。用此介面串連相關的module
+''' </summary>
+''' <remarks>
+''' </remarks>
+Public Interface IModuleLink
+    Property nextModule As IModuleLink
+    Property previousModule As IModuleLink
+    Property ActionFlag As flagController(Of interlockedFlag)
+End Interface

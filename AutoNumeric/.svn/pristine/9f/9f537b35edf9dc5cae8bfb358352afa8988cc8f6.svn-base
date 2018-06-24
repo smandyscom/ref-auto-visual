@@ -1,0 +1,81 @@
+﻿Imports Automation
+Imports System.ComponentModel
+
+
+Public Interface IProcedure
+
+    Enum procedureResultEnums As Integer
+        SUCCESS
+        ''' <summary>
+        ''' Not successed but not afftected next procedure
+        ''' </summary>
+        ''' <remarks></remarks>
+        FAILED
+        ''' <summary>
+        ''' Cannot go further procedure
+        ''' </summary>
+        ''' <remarks></remarks>
+        BREAK
+    End Enum
+
+    Property IsProcedureStarted As flagController(Of interlockedFlag)
+
+    ''' <summary>
+    ''' Set before trigger
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property Arguments As Object
+
+    Property Result As procedureResultEnums
+End Interface
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class procedureContext
+
+    Property IsEngaged As Boolean = False
+
+    <Browsable(False)>
+    ReadOnly Property Result As IProcedure.procedureResultEnums
+        Get
+            Return procedureReference.Result
+        End Get
+    End Property
+
+
+    Dim presettedArguments As Object
+
+    Dim procedureReference As IProcedure = Nothing
+
+    ''' <summary>
+    ''' True:Running
+    ''' False : Finished/Not Started
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    <Browsable(False)>
+    Property Run As Boolean
+        Get
+            Return procedureReference.IsProcedureStarted.viewFlag(interlockedFlag.POSITION_OCCUPIED)
+        End Get
+        Set(value As Boolean)
+            If presettedArguments IsNot Nothing Then
+                procedureReference.Arguments = presettedArguments
+            End If
+            procedureReference.IsProcedureStarted.writeFlag(interlockedFlag.POSITION_OCCUPIED,
+                                                            IsEngaged)
+        End Set
+    End Property
+
+    Sub New(__presettedArguments As Object,
+            procedureReference As IProcedure)
+        Me.presettedArguments = __presettedArguments
+        Me.procedureReference = procedureReference
+    End Sub
+
+End Class

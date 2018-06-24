@@ -1,0 +1,134 @@
+﻿Imports Automation
+Imports Automation.BDaq
+Imports System.ComponentModel
+Imports System.Drawing.Design
+
+Enum instantAIAOCodeEnum As Integer
+    BYTE_INDEX_DEVICENUM = 4
+    ''' <summary>
+    ''' AI : 0
+    ''' AO : 1
+    ''' </summary>
+    ''' <remarks></remarks>
+    BYTE_INDEX_CATEGRORY = 3
+    BYTE_INDEX_CHANNEL = 2
+End Enum
+
+Public Class moduleDAQ
+    Inherits hardwareBase
+
+    Property DeviceList As List(Of moduleInstantAIAO) = New List(Of moduleInstantAIAO)
+
+    Public Overrides Function dataDispatch() As Integer
+
+        While True
+            DeviceList.ForEach(Sub(device As moduleInstantAIAO) device.dataDispatch())
+        End While
+
+        Return 0
+    End Function
+
+    Public Overrides Function initialize() As Integer
+
+        DeviceList.ForEach(Sub(device As moduleInstantAIAO) device.initialize())
+
+        Threading.ThreadPool.QueueUserWorkItem(AddressOf dataDispatch)
+
+        Return 0
+    End Function
+
+    Public Overrides Function readValue(addressCodeInByte() As Byte) As ULong
+        Return locateDevice(addressCodeInByte).readValue(addressCodeInByte)
+    End Function
+
+    Public Overrides Sub writeValue(addressCodeInByte() As Byte, value As ULong)
+        locateDevice(addressCodeInByte).writeValue(addressCodeInByte, value)
+    End Sub
+
+    Function locateDevice(localAddress As Byte()) As moduleInstantAIAO
+        Return DeviceList.Find(Function(__device As moduleInstantAIAO) (__device.DeviceNumber = localAddress(instantAIAOCodeEnum.BYTE_INDEX_DEVICENUM)))
+    End Function
+
+
+    Sub New()
+        'as temprorary
+        Me.__hardwareCode = &HF0
+    End Sub
+End Class
+
+Public Class moduleInstantAIAO
+    Inherits hardwareBase
+
+
+
+    ''' <summary>
+    ''' Default the demo device
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property DeviceNumber As Integer = 0
+
+    <Editor(GetType(utilitiesUI.popupPropertyGridEditor), GetType(UITypeEditor))>
+    ReadOnly Property InputsController As InstantAiCtrl
+        Get
+            Return __inputsController
+        End Get
+    End Property
+
+    Dim __inputsController As InstantAiCtrl
+    Dim __outputsController As InstantAoCtrl
+
+    Dim __inputsChannelCounts As Integer = 0
+    Dim __outputsChannelCounts As Integer = 0
+
+    Dim tempBuffer As Integer = 0
+
+    Public Overrides Function dataDispatch() As Integer
+
+        For index = 0 To __inputsChannelCounts - 1
+            __inputsController.Read(index, tempBuffer)
+            memoryHold(index) = tempBuffer
+        Next
+        For index = 0 To __outputsController.ChannelCount - 1
+            tempBuffer = memoryHold(index + __inputsChannelCounts)
+            __outputsController.Write(index, tempBuffer)
+        Next
+
+        Return 0
+    End Function
+
+    Public Overrides Function initialize() As Integer
+        'TODO
+
+    End Function
+
+    Enum categroryCodeEnum As Byte
+        AI = 0
+        AO = 1
+    End Enum
+
+
+    Public Overrides Function readValue(addressCodeInByte() As Byte) As ULong
+        Select Case addressCodeInByte(instantAIAOCodeEnum.BYTE_INDEX_CATEGRORY)
+            Case categroryCodeEnum.AI
+                Return memoryHold(addressCodeInByte(instantAIAOCodeEnum.BYTE_INDEX_CHANNEL))
+            Case categroryCodeEnum.AO
+                Return memoryHold(addressCodeInByte(instantAIAOCodeEnum.BYTE_INDEX_CHANNEL) + __inputsChannelCounts)
+        End Select
+
+        Return 0
+    End Function
+
+    ''' <summary>
+    ''' AO only
+    ''' </summary>
+    ''' <param name="addressCodeInByte"></param>
+    ''' <param name="value"></param>
+    ''' <remarks></remarks>
+    Public Overrides Sub writeValue(addressCodeInByte() As Byte, value As ULong)
+        memoryHold(addressCodeInByte(instantAIAOCodeEnum.BYTE_INDEX_CHANNEL) + __inputsChannelCounts) =
+            value
+    End Sub
+End Class
+

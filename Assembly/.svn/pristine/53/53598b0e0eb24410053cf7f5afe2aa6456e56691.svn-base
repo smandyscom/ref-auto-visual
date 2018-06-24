@@ -1,0 +1,245 @@
+﻿Imports AutoNumeric
+Imports Automation
+
+
+''' <summary>
+''' Offered the 
+''' </summary>
+''' <remarks></remarks>
+Public MustInherit Class cameraCalibrationBase
+    Inherits measureProcedureType1Base
+    Implements IDisposable
+
+
+    ReadOnly Property NominalX As Double
+        Get
+            If nominalPosition.Current IsNot Nothing Then
+                Return nominalPosition.Current.X
+            Else
+                Return 0
+            End If
+        End Get
+    End Property
+    ReadOnly Property NominalY As Double
+        Get
+            If nominalPosition.Current IsNot Nothing Then
+                Return nominalPosition.Current.Y
+            Else
+                Return 0
+            End If
+        End Get
+    End Property
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns>
+    ''' True : image process is working
+    ''' False : image process done
+    ''' </returns>
+    ''' <remarks></remarks>
+    Property IsCameraTriggered As Boolean
+        Get
+            Return __isCameraTriggerd
+        End Get
+        Set(value As Boolean)
+            __isCameraTriggerd = value
+        End Set
+    End Property
+    Protected __isCameraTriggerd As Boolean = False
+    ''' <summary>
+    ''' Used to trigger external procedure
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Public Event CameraTriggered(ByVal sender As Object, ByVal e As EventArgs)
+    Protected Sub onCameraTriggerd(e As EventArgs)
+        RaiseEvent CameraTriggered(Me, e)
+    End Sub
+
+    Protected nominalPosition As List(Of PositionVector).Enumerator = Nothing
+
+    Protected Property CurrentTarget As cameraCalibrationSettingBase
+        Get
+            Return __currentTarget
+        End Get
+        Set(value As cameraCalibrationSettingBase)
+            __currentTarget = value
+            'link
+            MyBase.correspondingErrorMatrix = frames.Instance.Elementray(__currentTarget.RealReference,
+                                                                         __currentTarget.NominalReference)
+        End Set
+    End Property
+    Dim __currentTarget As cameraCalibrationSettingBase = Nothing
+
+    Dim WithEvents triggerHandle As imageProcessTriggerEventArgs = Nothing
+    Dim doneHandle As imageProcessEndEventArgs = Nothing
+
+    Dim imageRetryCounter As Integer = 0
+    Dim imageRetryGoal As Integer = 5
+
+    ''' <summary>
+    ''' The detailed moving procedure
+    ''' </summary>
+    ''' <remarks></remarks>
+    MustOverride Sub moveAction()
+    ''' <summary>
+    ''' Give X/Y only , trim out the z value
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Overridable Function postHandlingAction(nominalPosition As PositionVector, measuredPosition As PositionVector) As measuredDataPair
+        'Return New measuredDataPair(nominalPosition.Current.RawValue.SubVector(0, 2),
+        '                            doneHandle.OutputPositionInUnit.SubVector(0, 2))
+        Return New measuredDataPair(nominalPosition.RawValue.SubVector(0, 2),
+                                    measuredPosition.RawValue.SubVector(0, 2))
+    End Function
+    MustOverride Sub settingSaveAction()
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Overrides Function measureProcedure(ByRef state As Integer) As Boolean
+        Select Case state
+            Case 0
+                nominalPosition = __currentTarget.MeasurePoints.GetEnumerator
+                nominalPosition.MoveNext() ' take first point
+                state = 10
+            Case 10
+                'moving method
+                moveAction()
+                state = 20
+            Case 20
+                If Assembly.Instance.IsAllAxesSettled Then
+                    state = 50
+                Else
+                    '--------------
+                    'axes action
+                    '--------------
+                End If
+            Case 50
+                '------------------
+                'Trigger the camera
+                '------------------
+                triggerHandle = New imageProcessTriggerEventArgs(__currentTarget.ImageProcessSetting.ToolBlock)
+                RaiseEvent CameraTriggered(Me, triggerHandle)
+                state = 100
+            Case 100
+                '-------------------
+                '   Camera done
+                '-------------------
+                If Not __isCameraTriggerd Then
+                    '----------------------
+                    '   Wait some call back
+                    '----------------------
+                    'camera task done
+                    'pick the X,Y values only
+                    If doneHandle IsNot Nothing AndAlso
+                        doneHandle.Result = Cognex.VisionPro.CogToolResultConstants.Accept Then
+                        dataPairCollection.Add(postHandlingAction(nominalPosition.Current,
+                                                                 New PositionVector(doneHandle.OutputPositionInUnit, Nothing)))
+                        state = 500
+                    ElseIf imageRetryCounter < imageRetryGoal Then
+                        'try fetch image again
+                        imageRetryCounter += 1
+                        state = 50
+                    Else
+                        '----------------
+                        '   Skip this measure
+                        '----------------
+                        sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Image Process Failed At:{0}",
+                                                                               nominalPosition.Current.RawValue.ToVectorString.Replace(vbCrLf, vbTab)))
+                        state = 500
+                    End If
+                Else
+                    '-----------------
+                    '   Camera working
+                    '-----------------
+                End If
+
+            Case 500
+                nominalPosition.MoveNext()
+                imageRetryCounter = 0 'reset counter
+                If nominalPosition.Current IsNot Nothing Then
+                    '-------------------------
+                    '   Measure next one point
+                    '-------------------------
+                    state = 10 'rewind
+                Else
+                    '----------------
+                    '   All measure points had been done
+                    '----------------
+                    Return True
+                End If
+
+        End Select
+
+        Return False
+
+    End Function
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="state"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Overrides Function preparationProcedure(ByRef state As Integer) As Boolean
+        Return False
+    End Function
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Sub imageProcessStarted() Handles Me.CameraTriggered
+        __isCameraTriggerd = True
+    End Sub
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <param name="sender"></param>
+    ''' <param name="e"></param>
+    ''' <remarks></remarks>
+    Protected Overridable Sub imageProcessDone(sender As Object, e As imageProcessEndEventArgs) Handles triggerHandle.ImageProcessDone
+        Me.doneHandle = e
+        __isCameraTriggerd = False ' flag reset
+    End Sub
+
+
+#Region "IDisposable Support"
+    Private disposedValue As Boolean ' To detect redundant calls
+
+    ' IDisposable
+    Protected Overridable Sub Dispose(disposing As Boolean)
+        If Not Me.disposedValue Then
+            If disposing Then
+                'dispose managed state (managed objects).
+            End If
+
+            'free unmanaged resources (unmanaged objects) and override Finalize() below.
+            'set large fields to null.
+            settingSaveAction()
+        End If
+        Me.disposedValue = True
+    End Sub
+
+    'override Finalize() only if Dispose(ByVal disposing As Boolean) above has code to free unmanaged resources.
+    Protected Overrides Sub Finalize()
+        ' Do not change this code.  Put cleanup code in Dispose(ByVal disposing As Boolean) above.
+        Dispose(False)
+        MyBase.Finalize()
+    End Sub
+
+    ' This code added by Visual Basic to correctly implement the disposable pattern.
+    Public Sub Dispose() Implements IDisposable.Dispose
+        ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
+        Dispose(True)
+        GC.SuppressFinalize(Me)
+    End Sub
+#End Region
+
+End Class

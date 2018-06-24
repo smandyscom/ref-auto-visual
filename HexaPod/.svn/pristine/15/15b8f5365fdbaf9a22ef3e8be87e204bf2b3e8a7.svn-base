@@ -1,0 +1,359 @@
+﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+Partial Class userControlScara
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl 覆寫 Dispose 以清除元件清單。
+    <System.Diagnostics.DebuggerNonUserCode()> _
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    '為 Windows Form 設計工具的必要項
+    Private components As System.ComponentModel.IContainer
+
+    '注意:  以下為 Windows Form 設計工具所需的程序
+    '可以使用 Windows Form 設計工具進行修改。
+    '請不要使用程式碼編輯器進行修改。
+    <System.Diagnostics.DebuggerStepThrough()> _
+    Private Sub InitializeComponent()
+        Me.SplitContainer1 = New System.Windows.Forms.SplitContainer()
+        Me.ComboBoxRelDistance = New System.Windows.Forms.ComboBox()
+        Me.ButtonPosU = New System.Windows.Forms.Button()
+        Me.ButtonPosZ = New System.Windows.Forms.Button()
+        Me.ButtonPosY = New System.Windows.Forms.Button()
+        Me.ButtonNegU = New System.Windows.Forms.Button()
+        Me.ButtonNegZ = New System.Windows.Forms.Button()
+        Me.ButtonNegY = New System.Windows.Forms.Button()
+        Me.ButtonPosX = New System.Windows.Forms.Button()
+        Me.ButtonNegX = New System.Windows.Forms.Button()
+        Me.Label3 = New System.Windows.Forms.Label()
+        Me.ComboBox2ndPositions = New System.Windows.Forms.ComboBox()
+        Me.btnTeachPoint = New System.Windows.Forms.Button()
+        Me.btnReset = New System.Windows.Forms.Button()
+        Me.btnProgramMode = New System.Windows.Forms.Button()
+        Me.btnTaskManager = New System.Windows.Forms.Button()
+        Me.btnIOMonitor = New System.Windows.Forms.Button()
+        Me.btnRobotManager = New System.Windows.Forms.Button()
+        Me.btnControllerTools = New System.Windows.Forms.Button()
+        Me.btnSimulator = New System.Windows.Forms.Button()
+        Me.Label2 = New System.Windows.Forms.Label()
+        Me.Label1 = New System.Windows.Forms.Label()
+        Me.ButtonDrive = New System.Windows.Forms.Button()
+        Me.ComboBox1stPositions = New System.Windows.Forms.ComboBox()
+        Me.ComboBoxCommand = New System.Windows.Forms.ComboBox()
+        CType(Me.SplitContainer1, System.ComponentModel.ISupportInitialize).BeginInit()
+        Me.SplitContainer1.Panel1.SuspendLayout()
+        Me.SplitContainer1.SuspendLayout()
+        Me.SuspendLayout()
+        '
+        'SplitContainer1
+        '
+        Me.SplitContainer1.Dock = System.Windows.Forms.DockStyle.Fill
+        Me.SplitContainer1.Location = New System.Drawing.Point(0, 0)
+        Me.SplitContainer1.Name = "SplitContainer1"
+        '
+        'SplitContainer1.Panel1
+        '
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ComboBoxRelDistance)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonPosU)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonPosZ)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonPosY)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonNegU)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonNegZ)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonNegY)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonPosX)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonNegX)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.Label3)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ComboBox2ndPositions)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnTeachPoint)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnReset)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnProgramMode)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnTaskManager)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnIOMonitor)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnRobotManager)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnControllerTools)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.btnSimulator)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.Label2)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.Label1)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ButtonDrive)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ComboBox1stPositions)
+        Me.SplitContainer1.Panel1.Controls.Add(Me.ComboBoxCommand)
+        Me.SplitContainer1.Size = New System.Drawing.Size(640, 480)
+        Me.SplitContainer1.SplitterDistance = 213
+        Me.SplitContainer1.TabIndex = 0
+        '
+        'ComboBoxRelDistance
+        '
+        Me.ComboBoxRelDistance.FormattingEnabled = True
+        Me.ComboBoxRelDistance.Items.AddRange(New Object() {"0.1", "0.5", "1", "5", "10"})
+        Me.ComboBoxRelDistance.Location = New System.Drawing.Point(60, 176)
+        Me.ComboBoxRelDistance.Name = "ComboBoxRelDistance"
+        Me.ComboBoxRelDistance.Size = New System.Drawing.Size(64, 20)
+        Me.ComboBoxRelDistance.TabIndex = 24
+        Me.ComboBoxRelDistance.Text = "5"
+        '
+        'ButtonPosU
+        '
+        Me.ButtonPosU.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonPosU.Location = New System.Drawing.Point(8, 116)
+        Me.ButtonPosU.Name = "ButtonPosU"
+        Me.ButtonPosU.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonPosU.TabIndex = 23
+        Me.ButtonPosU.Text = "U+"
+        Me.ButtonPosU.UseVisualStyleBackColor = True
+        '
+        'ButtonPosZ
+        '
+        Me.ButtonPosZ.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonPosZ.Location = New System.Drawing.Point(128, 116)
+        Me.ButtonPosZ.Name = "ButtonPosZ"
+        Me.ButtonPosZ.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonPosZ.TabIndex = 22
+        Me.ButtonPosZ.Text = "Z+"
+        Me.ButtonPosZ.UseVisualStyleBackColor = True
+        '
+        'ButtonPosY
+        '
+        Me.ButtonPosY.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonPosY.Location = New System.Drawing.Point(68, 116)
+        Me.ButtonPosY.Name = "ButtonPosY"
+        Me.ButtonPosY.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonPosY.TabIndex = 21
+        Me.ButtonPosY.Text = "Y+"
+        Me.ButtonPosY.UseVisualStyleBackColor = True
+        '
+        'ButtonNegU
+        '
+        Me.ButtonNegU.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonNegU.Location = New System.Drawing.Point(8, 212)
+        Me.ButtonNegU.Name = "ButtonNegU"
+        Me.ButtonNegU.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonNegU.TabIndex = 20
+        Me.ButtonNegU.Text = "U-"
+        Me.ButtonNegU.UseVisualStyleBackColor = True
+        '
+        'ButtonNegZ
+        '
+        Me.ButtonNegZ.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonNegZ.Location = New System.Drawing.Point(128, 212)
+        Me.ButtonNegZ.Name = "ButtonNegZ"
+        Me.ButtonNegZ.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonNegZ.TabIndex = 19
+        Me.ButtonNegZ.Text = "Z-"
+        Me.ButtonNegZ.UseVisualStyleBackColor = True
+        '
+        'ButtonNegY
+        '
+        Me.ButtonNegY.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonNegY.Location = New System.Drawing.Point(68, 212)
+        Me.ButtonNegY.Name = "ButtonNegY"
+        Me.ButtonNegY.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonNegY.TabIndex = 18
+        Me.ButtonNegY.Text = "Y-"
+        Me.ButtonNegY.UseVisualStyleBackColor = True
+        '
+        'ButtonPosX
+        '
+        Me.ButtonPosX.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonPosX.Location = New System.Drawing.Point(128, 164)
+        Me.ButtonPosX.Name = "ButtonPosX"
+        Me.ButtonPosX.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonPosX.TabIndex = 17
+        Me.ButtonPosX.Text = "X+"
+        Me.ButtonPosX.UseVisualStyleBackColor = True
+        '
+        'ButtonNegX
+        '
+        Me.ButtonNegX.Font = New System.Drawing.Font("Microsoft JhengHei", 12.0!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(136, Byte))
+        Me.ButtonNegX.Location = New System.Drawing.Point(8, 164)
+        Me.ButtonNegX.Name = "ButtonNegX"
+        Me.ButtonNegX.Size = New System.Drawing.Size(48, 48)
+        Me.ButtonNegX.TabIndex = 16
+        Me.ButtonNegX.Text = "X-"
+        Me.ButtonNegX.UseVisualStyleBackColor = True
+        '
+        'Label3
+        '
+        Me.Label3.AutoSize = True
+        Me.Label3.Location = New System.Drawing.Point(20, 59)
+        Me.Label3.Name = "Label3"
+        Me.Label3.Size = New System.Drawing.Size(63, 12)
+        Me.Label3.TabIndex = 15
+        Me.Label3.Text = "Position 2："
+        '
+        'ComboBox2ndPositions
+        '
+        Me.ComboBox2ndPositions.FormattingEnabled = True
+        Me.ComboBox2ndPositions.Location = New System.Drawing.Point(89, 56)
+        Me.ComboBox2ndPositions.Name = "ComboBox2ndPositions"
+        Me.ComboBox2ndPositions.Size = New System.Drawing.Size(121, 20)
+        Me.ComboBox2ndPositions.TabIndex = 14
+        '
+        'btnTeachPoint
+        '
+        Me.btnTeachPoint.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnTeachPoint.Location = New System.Drawing.Point(108, 448)
+        Me.btnTeachPoint.Name = "btnTeachPoint"
+        Me.btnTeachPoint.Size = New System.Drawing.Size(96, 28)
+        Me.btnTeachPoint.TabIndex = 13
+        Me.btnTeachPoint.Text = "Teach Point"
+        Me.btnTeachPoint.UseVisualStyleBackColor = True
+        '
+        'btnReset
+        '
+        Me.btnReset.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnReset.Location = New System.Drawing.Point(4, 448)
+        Me.btnReset.Name = "btnReset"
+        Me.btnReset.Size = New System.Drawing.Size(96, 28)
+        Me.btnReset.TabIndex = 12
+        Me.btnReset.Text = "Reset"
+        Me.btnReset.UseVisualStyleBackColor = True
+        '
+        'btnProgramMode
+        '
+        Me.btnProgramMode.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnProgramMode.Location = New System.Drawing.Point(4, 416)
+        Me.btnProgramMode.Name = "btnProgramMode"
+        Me.btnProgramMode.Size = New System.Drawing.Size(96, 28)
+        Me.btnProgramMode.TabIndex = 11
+        Me.btnProgramMode.Text = "Program  Mode"
+        Me.btnProgramMode.UseVisualStyleBackColor = True
+        '
+        'btnTaskManager
+        '
+        Me.btnTaskManager.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnTaskManager.Location = New System.Drawing.Point(108, 416)
+        Me.btnTaskManager.Name = "btnTaskManager"
+        Me.btnTaskManager.Size = New System.Drawing.Size(96, 28)
+        Me.btnTaskManager.TabIndex = 10
+        Me.btnTaskManager.Text = "Task Manager"
+        Me.btnTaskManager.UseVisualStyleBackColor = True
+        '
+        'btnIOMonitor
+        '
+        Me.btnIOMonitor.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnIOMonitor.Location = New System.Drawing.Point(108, 384)
+        Me.btnIOMonitor.Name = "btnIOMonitor"
+        Me.btnIOMonitor.Size = New System.Drawing.Size(96, 28)
+        Me.btnIOMonitor.TabIndex = 9
+        Me.btnIOMonitor.Text = "I/O Monitor"
+        Me.btnIOMonitor.UseVisualStyleBackColor = True
+        '
+        'btnRobotManager
+        '
+        Me.btnRobotManager.Font = New System.Drawing.Font("Microsoft Sans Serif", 8.25!, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, CType(0, Byte))
+        Me.btnRobotManager.Location = New System.Drawing.Point(4, 384)
+        Me.btnRobotManager.Name = "btnRobotManager"
+        Me.btnRobotManager.Size = New System.Drawing.Size(96, 28)
+        Me.btnRobotManager.TabIndex = 8
+        Me.btnRobotManager.Text = "Robot Manager"
+        Me.btnRobotManager.UseVisualStyleBackColor = True
+        '
+        'btnControllerTools
+        '
+        Me.btnControllerTools.Location = New System.Drawing.Point(108, 352)
+        Me.btnControllerTools.Name = "btnControllerTools"
+        Me.btnControllerTools.Size = New System.Drawing.Size(96, 28)
+        Me.btnControllerTools.TabIndex = 7
+        Me.btnControllerTools.Text = "Controller Tools"
+        Me.btnControllerTools.UseVisualStyleBackColor = True
+        '
+        'btnSimulator
+        '
+        Me.btnSimulator.Location = New System.Drawing.Point(4, 352)
+        Me.btnSimulator.Name = "btnSimulator"
+        Me.btnSimulator.Size = New System.Drawing.Size(96, 28)
+        Me.btnSimulator.TabIndex = 6
+        Me.btnSimulator.Text = "simulator"
+        Me.btnSimulator.UseVisualStyleBackColor = True
+        '
+        'Label2
+        '
+        Me.Label2.AutoSize = True
+        Me.Label2.Location = New System.Drawing.Point(20, 33)
+        Me.Label2.Name = "Label2"
+        Me.Label2.Size = New System.Drawing.Size(63, 12)
+        Me.Label2.TabIndex = 4
+        Me.Label2.Text = "Position 1："
+        '
+        'Label1
+        '
+        Me.Label1.AutoSize = True
+        Me.Label1.Location = New System.Drawing.Point(17, 7)
+        Me.Label1.Name = "Label1"
+        Me.Label1.Size = New System.Drawing.Size(66, 12)
+        Me.Label1.TabIndex = 3
+        Me.Label1.Text = "Command："
+        '
+        'ButtonDrive
+        '
+        Me.ButtonDrive.Location = New System.Drawing.Point(89, 82)
+        Me.ButtonDrive.Name = "ButtonDrive"
+        Me.ButtonDrive.Size = New System.Drawing.Size(121, 23)
+        Me.ButtonDrive.TabIndex = 2
+        Me.ButtonDrive.Text = "Drive"
+        Me.ButtonDrive.UseVisualStyleBackColor = True
+        '
+        'ComboBox1stPositions
+        '
+        Me.ComboBox1stPositions.FormattingEnabled = True
+        Me.ComboBox1stPositions.Location = New System.Drawing.Point(89, 30)
+        Me.ComboBox1stPositions.Name = "ComboBox1stPositions"
+        Me.ComboBox1stPositions.Size = New System.Drawing.Size(121, 20)
+        Me.ComboBox1stPositions.TabIndex = 1
+        '
+        'ComboBoxCommand
+        '
+        Me.ComboBoxCommand.FormattingEnabled = True
+        Me.ComboBoxCommand.Location = New System.Drawing.Point(89, 4)
+        Me.ComboBoxCommand.Name = "ComboBoxCommand"
+        Me.ComboBoxCommand.Size = New System.Drawing.Size(121, 20)
+        Me.ComboBoxCommand.TabIndex = 0
+        '
+        'userControlScara
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 12.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.Controls.Add(Me.SplitContainer1)
+        Me.Name = "userControlScara"
+        Me.Size = New System.Drawing.Size(640, 480)
+        Me.SplitContainer1.Panel1.ResumeLayout(False)
+        Me.SplitContainer1.Panel1.PerformLayout()
+        CType(Me.SplitContainer1, System.ComponentModel.ISupportInitialize).EndInit()
+        Me.SplitContainer1.ResumeLayout(False)
+        Me.ResumeLayout(False)
+
+    End Sub
+    Friend WithEvents SplitContainer1 As System.Windows.Forms.SplitContainer
+    Friend WithEvents Label2 As System.Windows.Forms.Label
+    Friend WithEvents Label1 As System.Windows.Forms.Label
+    Friend WithEvents ButtonDrive As System.Windows.Forms.Button
+    Friend WithEvents ComboBox1stPositions As System.Windows.Forms.ComboBox
+    Friend WithEvents ComboBoxCommand As System.Windows.Forms.ComboBox
+    Friend WithEvents btnSimulator As System.Windows.Forms.Button
+    Friend WithEvents btnControllerTools As System.Windows.Forms.Button
+    Friend WithEvents btnTeachPoint As System.Windows.Forms.Button
+    Friend WithEvents btnReset As System.Windows.Forms.Button
+    Friend WithEvents btnProgramMode As System.Windows.Forms.Button
+    Friend WithEvents btnTaskManager As System.Windows.Forms.Button
+    Friend WithEvents btnIOMonitor As System.Windows.Forms.Button
+    Friend WithEvents btnRobotManager As System.Windows.Forms.Button
+    Friend WithEvents Label3 As System.Windows.Forms.Label
+    Friend WithEvents ComboBox2ndPositions As System.Windows.Forms.ComboBox
+    Friend WithEvents ButtonNegX As System.Windows.Forms.Button
+    Friend WithEvents ComboBoxRelDistance As System.Windows.Forms.ComboBox
+    Friend WithEvents ButtonPosU As System.Windows.Forms.Button
+    Friend WithEvents ButtonPosZ As System.Windows.Forms.Button
+    Friend WithEvents ButtonPosY As System.Windows.Forms.Button
+    Friend WithEvents ButtonNegU As System.Windows.Forms.Button
+    Friend WithEvents ButtonNegZ As System.Windows.Forms.Button
+    Friend WithEvents ButtonNegY As System.Windows.Forms.Button
+    Friend WithEvents ButtonPosX As System.Windows.Forms.Button
+
+End Class

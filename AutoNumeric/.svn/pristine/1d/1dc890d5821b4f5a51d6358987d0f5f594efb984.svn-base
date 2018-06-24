@@ -1,0 +1,180 @@
+﻿Imports Automation
+Imports MathNet.Numerics.LinearAlgebra
+''' <summary>
+''' Offer the basic data procedure flow
+''' Output: error matrix updating
+''' </summary>
+''' <remarks></remarks>
+Public MustInherit Class measureProcedureType1Base
+    Inherits systemControlPrototype
+
+    Property IsProcedureStarted As Boolean
+        Get
+            Return __isProcedureStarted
+        End Get
+        Set(value As Boolean)
+            'trigger start only
+            If Not __isProcedureStarted And
+                value Then
+                __isProcedureStarted = True
+            End If
+        End Set
+    End Property
+    Dim __isProcedureStarted As Boolean = False
+
+    ReadOnly Property CurrentDataIndex As Integer
+        Get
+            Return dataPairCollection.Count - 1
+        End Get
+    End Property
+
+    ReadOnly Property ProcedureState As Integer
+        Get
+            Return __procedureState
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Used to store data pair
+    ''' Derived class should output this
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected dataPairCollection As List(Of measuredDataPair) = New List(Of measuredDataPair)
+
+    ''' <summary>
+    ''' Link to some external link
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected correspondingErrorMatrix As errorHtm = Nothing
+    Protected toleranceThreshold As Double = 0.001
+
+    Protected tryingTimes As Integer = 0
+    Protected tryingGoal As Integer = 5
+
+    Protected __procedureState As Integer = 0
+    Protected lastProcedureState As Integer = 0
+    Protected MustOverride Function measureProcedure(ByRef state As Integer) As Boolean
+    Protected MustOverride Function preparationProcedure(ByRef state As Integer) As Boolean
+    Protected MustOverride Function finalizeProcedure(ByRef state As Integer) As Boolean
+
+    Protected errorVector As Vector(Of Double) = Nothing
+
+    Dim alarmPackErrorNotConverage As alarmContextBase = New alarmContextBase With {.Sender = Me}
+
+    Dim lastSystemSubState As Integer = 0
+
+    Function stateMeasure() As Integer
+
+        'record procedure state
+        If lastProcedureState <> __procedureState Then
+            sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Procedure:{0}", __procedureState))
+            lastProcedureState = __procedureState
+        End If
+        If lastSystemSubState <> systemSubState Then
+            sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("Sub-state:{0}", systemSubState))
+            lastSystemSubState = systemSubState
+        End If
+
+        'through the measure procedure , get the ideal position and real position(measured one)
+        'turns into error gain/error form (error  = ideal-real)
+        'interating above procedure , until enough data count got
+        'processing datas, error vector/error matrix calculated
+        'update error matrix
+        'check if norm of error vector is smaller than low threshold
+        ' if yes , quit procedure
+        ' if no  , iterating
+
+        Select Case systemSubState
+            Case 0
+                If __isProcedureStarted Then
+                    tryingTimes = 0 'reset
+                    systemSubState += 10
+                Else
+                    '---------------
+                    '   Wait Trigger
+                    '---------------
+                End If
+            Case 10
+                If preparationProcedure(__procedureState) Then
+                    __procedureState = 0 'reset
+                    systemSubState = 100
+                Else
+                    '------------
+                    '   Preparating
+                    '------------
+                End If
+            Case 100
+                'measure procedures
+                If measureProcedure(__procedureState) Then
+                    __procedureState = 0 'reset
+
+                    'procedure would output dataPairCollection
+                    errorVector =
+                        measuredDataPair.fitErrorVector(dataPairCollection)
+
+                    '----------------------------------------
+                    '   Record
+                    '----------------------------------------
+                    sendMessage(internalEnum.GENERIC_MESSAGE,
+                                String.Format("Error Vector:{0},Data Pairs:{1}",
+                                              errorVector.ToVectorString.Replace(vbCrLf, vbTab),
+                                              measuredDataPair.pairsOutput(dataPairCollection)))
+
+                    dataPairCollection.Clear()
+
+                    'cascade current error matrix
+                    correspondingErrorMatrix.ErrorVector -= errorVector
+
+                    If errorVector.L2Norm > toleranceThreshold And
+                        tryingTimes < tryingGoal Then
+                        '-------------------------
+                        'not converged , but trying times not over the given value
+                        'keep trying
+                        '-------------------------
+                        tryingTimes += 1
+                    Else
+                        'converged/trying times reached , procedure done
+                        systemSubState = 500
+                    End If
+                Else
+                    '--------------------------
+                    '   Measuring
+                    '--------------------------
+                End If
+            Case 500
+                If finalizeProcedure(__procedureState) Then
+                    '------------------
+                    '   Procedure Done
+                    '------------------
+                    If errorVector.L2Norm <= toleranceThreshold Then
+                        '----------------
+                        '   Well done
+                        '----------------
+                    Else
+                        'not coveraged , report error
+                        alarmPackErrorNotConverage.AdditionalInfo =
+                            String.Format("Error Vector Cannot Converage, {0}",
+                                          errorVector.L2Norm)
+                        CentralAlarmObject.raisingAlarm(alarmPackErrorNotConverage)
+                    End If
+
+                    __isProcedureStarted = False ' reset flag
+                    systemSubState = 0
+                Else
+                    '--------------------
+                    '   Procedure running
+                    '--------------------
+                End If
+
+        End Select
+
+        Return 0
+
+    End Function
+
+    Sub New()
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateMeasure
+        Me.systemMainState = systemStatesEnum.EXECUTE
+    End Sub
+
+End Class

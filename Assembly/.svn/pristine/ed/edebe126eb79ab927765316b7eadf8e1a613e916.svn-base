@@ -1,0 +1,44 @@
+﻿Imports Automation
+
+Public Class userControlFrameManager1
+
+    Dim WithEvents assemblyReference As Assembly = Assembly.Instance
+
+    'select ritem, moving
+    Sub loadControl() Handles MyBase.Load
+        utilitiesUI.loadComboBoxItemByEnum(ComboBoxRItems, GetType(itemsDefinition))
+        utilitiesUI.loadComboBoxItemByEnum(ComboBoxMovingItems, GetType(framesDefinition))
+    End Sub
+
+    Sub comboBoxItemSelected(sender As ComboBox, e As EventArgs) Handles ComboBoxRItems.SelectedValueChanged,
+        ComboBoxMovingItems.SelectedValueChanged
+
+        Select Case sender.Name
+            Case ComboBoxRItems.Name
+                frames.Instance.CurrentRItem = sender.SelectedItem
+                PropertyGridRItem.SelectedObject = frames.Instance.CurrentRObject
+            Case ComboBoxMovingItems.Name
+                frames.Instance.CurrentMovingItem = sender.SelectedItem
+        End Select
+
+    End Sub
+
+    Private Sub timerTicks(sender As Object, e As EventArgs) Handles timerScan.Tick
+        For Each item As ComboBox In {ComboBoxRItems,
+                                      ComboBoxMovingItems}
+            item.Enabled = assemblyReference.IsXYZSettled
+        Next
+
+        'self terminition
+        If assemblyReference.IsXYZSettled Then
+            timerScan.Enabled = False
+        End If
+
+    End Sub
+
+    Sub xyzIsSettling() Handles assemblyReference.TransformationStarted
+        Me.Invoke(Sub() timerScan.Enabled = True)
+    End Sub
+
+
+End Class

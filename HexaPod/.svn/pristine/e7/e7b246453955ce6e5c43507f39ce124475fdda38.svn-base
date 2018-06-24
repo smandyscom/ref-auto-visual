@@ -1,0 +1,428 @@
+﻿Imports System.Runtime.InteropServices
+Imports System.Threading
+Imports Automation.Components.Services
+Imports System.Windows.Forms
+Imports Automation
+Imports System.ComponentModel
+Imports SmarPodAssembly.SmarpodApiFuncs
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class smarpodSetting
+    Inherits settingBase
+
+
+    Property SensorMode As sensorModeEnum = sensorModeEnum.SMARPOD_SENSORS_DISABLED
+    Property MaxFrequency As UInteger = 18500
+    'Property UI parts
+    Property FrefMethod As FREFMETHOD = FrefMethod._DEFAULT
+    Property FrefXDirection As FREF_DIRECTION = FREF_DIRECTION._DEFAULT
+    Property FrefYDirection As FREF_DIRECTION = FREF_DIRECTION._DEFAULT
+    Property FrefZDirection As FREF_DIRECTION = FREF_DIRECTION._DEFAULT
+    Property PivotMode As PIVOTMODES = PIVOTMODES.SMARPOD_PIVOT_RELATIVE
+    ''' <summary>
+    ''' In Hertz
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property FrefAndCalFrequency As UInt32 = 18500
+
+
+End Class
+
+''' <summary>
+''' Tranlation Unit in mm
+''' Rotation Unit in rad
+''' </summary>
+''' <remarks></remarks>
+Public Class podCommandBase
+    Implements ICloneable
+
+    ReadOnly Property IsReached(target As podCommandBase) As Boolean
+        Get
+            'todo , in tolerance
+        End Get
+    End Property
+
+    Property Tolerance As Double = 0.0001
+
+    Property Px As Double = 0
+    Property Py As Double = 0
+    Property Pz As Double = 0
+    Property Rx As Double = 0
+    Property Ry As Double = 0
+    Property Rz As Double = 0
+
+    ''' <summary>
+    ''' In mm/s**2
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property Accerleration As Double = 0.1
+    ''' <summary>
+    ''' In mm/s
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property Speed As Double = 1
+
+    'TODO , derived class to implement forward/backward kinematics
+
+    Public Function Clone() As Object Implements ICloneable.Clone
+        Return Me.MemberwiseClone()
+    End Function
+
+    ''' <summary>
+    ''' Data convert from struture pose
+    ''' </summary>
+    ''' <remarks></remarks>
+    Sub fromPose(__pose As Smarpod_Pose)
+        With __pose
+            Px = .positionX
+            Py = .positionY
+            Pz = .positionZ
+            Rx = .rotationX
+            Ry = .rotationY
+            Rz = .rotationZ
+        End With
+    End Sub
+    ''' <summary>
+    ''' Data convert to structure pose
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function toPose() As Smarpod_Pose
+        Return New Smarpod_Pose With {.positionX = Px,
+                                      .positionY = Py,
+                                      .positionZ = Pz,
+                                      .rotationX = Rx,
+                                      .rotationY = Ry,
+                                      .rotationZ = Rz}
+    End Function
+
+
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Overrides Function ToString() As String
+        Return String.Format("{0},{1},{2},{3},{4},{5}",
+                             Px,
+                             Py,
+                             Pz,
+                             Rx,
+                             Ry,
+                             Rz)
+    End Function
+End Class
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class Smarpod
+    Inherits systemControlPrototype
+    Implements IDrivable
+    Implements IDisposable
+
+
+    Property Configuration As smarpodSetting = New smarpodSetting
+
+    Public Enum podCommands As Integer
+        NONE = 0
+        GO_HOME = 2
+        GO_POSITION = 3
+    End Enum
+
+    Public Enum podSubStates As Integer
+        SETUP_AND_GO = 0
+        WAITEXECUTION
+        WAITFINEPOSITION
+    End Enum
+
+    Public Delegate Function commandFunctionPrototype(ByRef subState As Short) As IDrivable.endStatus
+    <Browsable(False)> Property CommandFunctionDictionary As Dictionary(Of [Enum], commandFunctionPrototype) = New Dictionary(Of [Enum], commandFunctionPrototype)    ' managed all command functions
+
+    Protected __commandInExecute As podCommands = podCommands.NONE
+
+    Protected timeOutTimer As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(TimeSpan.TicksPerSecond * 30)}
+
+    Protected __commandSubState As podSubStates = podSubStates.SETUP_AND_GO ' shared by all command functions , command function should rewind this in the end of execution
+    Protected __commandEndStatus As IDrivable.endStatus = IDrivable.endStatus.EXECUTING
+
+    Public Property TimeoutLimit As TimeSpan Implements IDrivable.TimeoutLimit
+
+    ' 連線位址
+    ' Model Number
+    Dim _mLocator As String = "network:192.168.2.200:5000"
+    Dim _mModelNum As UInteger = 10019
+
+#Region "device status"
+    ' 操作狀態
+    Private __returnValue As UInt32 = Status.SMARPOD_OK
+    Public ReadOnly Property ReturnValue As Status
+        Get
+            Return [Enum].ToObject(GetType(Status), __returnValue)
+        End Get
+    End Property
+    ' 移動狀態
+    Private __moveStatus As moveStatusEnum = moveStatusEnum.SMARPOD_STOPPED
+    Public ReadOnly Property MoveStatus() As moveStatusEnum
+        Get
+            Return MoveStatus
+        End Get
+    End Property
+    ''' <summary>
+    ''' Fetch detailed status description
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property StatusInfo As String
+        Get
+            Dim __ptr As IntPtr
+            SmarpodApiFuncs.Smarpod_GetStatusInfo(__returnValue, __ptr)
+            Return Marshal.PtrToStringAnsi(__ptr)
+        End Get
+    End Property
+#End Region
+
+    ''' <summary>
+    ''' ID Fetched from connection procedure
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private __smarpodId As UInteger = 0
+    ReadOnly Property SmarPodId As UInteger
+        Get
+            Return __smarpodId
+        End Get
+    End Property
+    ReadOnly Property CurrentPose As String
+        Get
+            Return __currentPose.ToString
+        End Get
+    End Property
+    Public __currentPose As podCommandBase = New podCommandBase
+
+
+    Sub New(Optional address As String = "192.168.2.200:5000",
+           Optional model As UInteger = 10019)
+        _mLocator = String.Format("network:{0}", address)
+        _mModelNum = model
+
+        Me.initialize = [Delegate].Combine(Me.initialize,
+                                           New Func(Of Integer)(AddressOf initMappingAndSetup))
+
+    End Sub
+
+
+    Function initMappingAndSetup() As Integer
+
+        '' reflect dll info
+        Dim major As UInteger = 0
+        Dim minor As UInteger = 0
+        Dim update As UInteger = 0
+        __returnValue = SmarpodApiFuncs.Smarpod_GetDLLVersion(major, minor, update)
+        sendMessage(internalEnum.GENERIC_MESSAGE, String.Format("SmarPod Version:{0},{1},{2}",
+                                                               major,
+                                                               minor,
+                                                               update))
+        'Open and link
+        __returnValue = SmarpodApiFuncs.Smarpod_Open(__smarpodId, _mModelNum, _mLocator, "")
+        '--------------
+        'Configurations ,load setting and configuration
+        '--------------
+        SmarpodApiFuncs.Smarpod_Set_ui(__smarpodId, &H4, &H1000)
+
+        Return 0
+    End Function
+
+    Protected Overrides Function process() As Integer
+        Return MyBase.process()
+    End Function
+
+
+    Property XDirection As Integer
+        Set(value As Integer)
+            Dim status As Status
+            status = SmarpodApiFuncs.Smarpod_Set_d(__smarpodId, &H4, &H1000)
+            If status <> status.SMARPOD_OK Then
+                MsgBox(String.Format("XDirection Error : {0}", [Enum].GetName(GetType(Status), status)))
+            End If
+        End Set
+        Get
+            Return SmarpodApiFuncs.Smarpod_Get_ui(__smarpodId, 1002, &H1000)
+        End Get
+    End Property
+
+    Public Function FindReferenceMarks() As String
+        __returnValue = SmarpodApiFuncs.Smarpod_FindReferenceMarks(__smarpodId)
+        Return ReturnValue
+    End Function
+
+    Public Function Calibrate() As String
+        __returnValue = SmarpodApiFuncs.Smarpod_Calibrate(__smarpodId)
+        Return ReturnValue
+    End Function
+
+    Public Function IsReferenced() As Integer
+        '0: not referenced, 1: referenced.
+        Dim referenced As Integer = 0
+        __returnValue = SmarpodApiFuncs.Smarpod_IsReferenced(__smarpodId, referenced)
+        Return referenced
+    End Function
+
+    Public Function IsPoseReachable(pose As Smarpod_Pose) As Integer
+        Dim reachable As Integer = 0    '0: the pose cannot be reached, 1: the pose can be reached by the SmarPod.
+        __returnValue = SmarpodApiFuncs.Smarpod_IsPoseReachable(__smarpodId, pose, reachable)
+        Return reachable
+    End Function
+
+    Public Function IsPoseReachable() As Integer
+        Dim reachable As Integer = 0    '0: the pose cannot be reached, 1: the pose can be reached by the SmarPod.
+        mStatusNum = SmarpodApiFuncs.Smarpod_IsPoseReachable(mSmarpodId, CPoseToStruPose(mTargetPose), reachable)
+        Return reachable
+    End Function
+
+
+    ''' <summary>
+    ''' Thread用(不改變mStrStatus)
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub GetPoseContinuously()
+        Dim pose As Smarpod_Pose
+        SmarpodApiFuncs.Smarpod_GetPose(__smarpodId, pose)
+        StruPoseToCPose(mCurrentPose, pose)
+    End Sub
+    Public Function GetMoveStatus() As SmarpodApiFuncs.moveStatusEnum
+        Dim statusNum As UInteger = 99
+        __returnValue = SmarpodApiFuncs.Smarpod_GetMoveStatus(__smarpodId, statusNum)
+        UpdateStatusInfo()
+        Return __returnValue
+    End Function
+  
+    Public Function Move(pose As Smarpod_Pose, holdTime As UInteger, waitForCompletion As Integer) As String
+        ' pose: meters, degrees
+        ' holdTime: milliseconds
+        ' waitForCompletion 1: the function does not return until all positioners have stopped moving. 
+        '                   0: the function returns immediately.
+        ' max: 1mm, 10deg
+        __returnValue = SmarpodApiFuncs.Smarpod_Move(__smarpodId, pose, holdTime, waitForCompletion)
+        UpdateStatusInfo()
+        Return ReturnValue
+    End Function
+    Public Function Move(holdTime As UInteger, waitForCompletion As Integer) As String
+        mStatusNum = SmarpodApiFuncs.Smarpod_Move(mSmarpodId, CPoseToStruPose(mTargetPose), holdTime, waitForCompletion)
+        UpdateStatusInfo()
+        Return ReturnValue
+    End Function
+    Public Function Move() As Status
+        mStatusNum = SmarpodApiFuncs.Smarpod_Move(mSmarpodId, CPoseToStruPose(mTargetPose), mHoldtime, mWaitForComplete)
+        UpdateStatusInfo()
+        Return __returnValue
+    End Function
+
+    Public Function MoveStop() As String
+        __returnValue = SmarpodApiFuncs.Smarpod_Stop(__smarpodId)
+        UpdateStatusInfo()
+        Return ReturnValue
+    End Function
+
+    Public Function StopAndHold(holdTime As UInteger) As String
+        __returnValue = SmarpodApiFuncs.Smarpod_StopAndHold(__smarpodId, holdTime)
+        UpdateStatusInfo()
+        Return ReturnValue
+    End Function
+    Public Function Stop_() As UInteger
+        __returnValue = SmarpodApiFuncs.Smarpod_Stop(__smarpodId)
+        Return __returnValue
+    End Function
+
+
+    Public Overrides Function raisingGUI() As Control
+        Dim uc As userControlSmarPod = New userControlSmarPod
+        With uc
+            .SmarPodReference = Me
+            .PropertyView = New userControlPropertyView With {.Drive = Me}
+            '.Dock = DockStyle.Fill
+        End With
+        Return uc
+    End Function
+
+    Public ReadOnly Property CommandDrivenState As IDrivable.drivenState Implements IDrivable.CommandDrivenState
+        Get
+
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandEndStatus As IDrivable.endStatus Implements IDrivable.CommandEndStatus
+        Get
+
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandInExecute As Object Implements IDrivable.CommandInExecute
+        Get
+
+        End Get
+    End Property
+
+    Private Function drive(command As [Enum], Optional __arg As Object = Nothing) As IDrivable.endStatus Implements IDrivable.drive
+        Return IDrivable.endStatus.EXECUTING
+    End Function
+   
+
+    Public Function getCommands() As ICollection Implements IDrivable.getCommands
+
+    End Function
+
+
+#Region "command functions"
+
+    Function MyFunc() As Integer
+
+        Return 0
+    End Function
+
+
+#End Region
+
+#Region "IDisposable Support"
+    Private disposedValue As Boolean ' 偵測多餘的呼叫
+
+    ' IDisposable
+    Protected Overridable Sub Dispose(disposing As Boolean)
+        If Not Me.disposedValue Then
+            If disposing Then
+                ' TODO:  處置 Managed 狀態 (Managed 物件)。
+            End If
+            SmarpodApiFuncs.Smarpod_Close(__smarpodId)
+            ' TODO:  釋放 Unmanaged 資源 (Unmanaged 物件) 並覆寫下面的 Finalize()。
+            ' TODO:  將大型欄位設定為 null。
+        End If
+        Me.disposedValue = True
+    End Sub
+
+    ' TODO:  只有當上面的 Dispose(ByVal disposing As Boolean) 有可釋放 Unmanaged 資源的程式碼時，才覆寫 Finalize()。
+    Protected Overrides Sub Finalize()
+        ' 請勿變更此程式碼。在上面的 Dispose(ByVal disposing As Boolean) 中輸入清除程式碼。
+        Dispose(False)
+        MyBase.Finalize()
+    End Sub
+
+    ' 由 Visual Basic 新增此程式碼以正確實作可處置的模式。
+    Public Sub Dispose() Implements IDisposable.Dispose
+        ' 請勿變更此程式碼。在以上的 Dispose 置入清除程式碼 (視為布林值處置)。
+        Dispose(True)
+        GC.SuppressFinalize(Me)
+    End Sub
+#End Region
+
+End Class

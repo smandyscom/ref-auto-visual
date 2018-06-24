@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<imageProcessSettingBlock xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <LightDensity>1</LightDensity>
+  <LightChannel>0</LightChannel>
+  <VppFilename>C4DIE.vpp</VppFilename>
+</imageProcessSettingBlock>

@@ -1,0 +1,444 @@
+﻿Imports Automation
+Imports System.IO
+Imports Automation.Components.Services
+Imports Automation.Components.CommandStateMachine
+Imports Mes
+Imports System.Text.RegularExpressions
+
+Public Class formMain
+
+    Private WithEvents __assembly As Assembly = New Assembly  'todo , allocating specific assembly here
+    Private WithEvents messengerReference As messageHandler
+    Private WithEvents pauseBlockReference As interceptObject
+
+    Dim WithEvents __assemblyAlarmManager As alarmManager  'ready link to __assembly
+
+    Private historyConsoleMaxLines As Integer = 64
+
+    Dim __messageDataBase = New dataBaseMain()  'todo , allocating specific dataBase here
+    Dim __sensorAreaDatabase As IMessageQuery = New sensorAreaDatabase    'Hsien , used to query sensor area
+    Dim __sensorDetailDatabase As sensorDetailDatabase = New sensorDetailDatabase
+
+    Private Sub formMain_FormClosing(sender As Object, e As FormClosingEventArgs) Handles Me.FormClosing
+        UserControl_Vision1.Close()
+    End Sub
+
+
+    'Hsien , 2015.10.26 , Mes Integration
+    Dim __mesCore As mesDriverBase = New mesCoreITRIQuickGem()
+    Dim __mesController As MesController_Asa05067 = MesController_Asa05067.GetInstance(__mesCore)
+
+    Private Sub loadMain(sender As Object, e As EventArgs) Handles MyBase.Load
+#If USE_ROBOT = 0 Then
+        MsgBox("USE_ROBOT = 0")
+#End If
+#If USE_EVISION = 0 Then
+        MsgBox("USE_EVISION = 0")
+#End If
+        '----- This is English version ------
+        'Application.CurrentCulture = Globalization.CultureInfo.CreateSpecificCulture("en-US")
+        'utilitiesUI.applyResourceOnAllControls(Me.Controls, New System.ComponentModel.ComponentResourceManager(Me.GetType()))
+        ' __sensorDetailDatabase.swapDataBase()
+
+        'If utilities.IsInIDEmode = False Then 'not in ide mode 
+        Me.MainTabControl.TabPages.Remove(TabPageEnginner)
+        'With UserControlMainPanel1
+        '    .UserControlLanePickZoneA.IsElementModuleActionVisualizing = False
+        '    .UserControlLaneTongueA.IsElementModuleActionVisualizing = False
+        '    .UserControlLaneMiddleA.IsElementModuleActionVisualizing = False
+        '    .UserControlArm.IsElementModuleActionVisualizing = False
+        'End With
+        'End If
+
+
+
+        'message bus initialize
+        With UserControlMessage1
+            .messengerReference = __assembly.CentralMessenger
+
+            .IsValidToShow = userControlMessage.generateMessageFilters({AddressOf .isNonRedundantMessage})
+            .MessageFormator = Function(__sender As messageHandler, __e As messagePackageEventArg) (String.Format(vbCrLf & "{0} {1}", __e.Message.TimeStamp, __e.Message.AdditionalInfo))
+        End With
+        With UserControlTitleWarning1
+            .messengerReference = __assembly.CentralMessenger
+
+        End With
+        Me.UserControlAliveBar1.assemblyReference = __assembly
+
+        System.Diagnostics.Process.GetCurrentProcess.PriorityClass = ProcessPriorityClass.High  'set me as highest priority
+
+        Dim di As DirectoryInfo = New DirectoryInfo(My.Application.Info.DirectoryPath + "\Data\")
+        If (Not di.Exists) Then
+            '--------------
+            '   Once directory not existed , created one
+            '--------------
+            di.Create()
+        End If
+
+        '------------------------------------------------------
+        '   Show the version info , and write into version file
+        '------------------------------------------------------
+        Me.Text = String.Format("{0:G} {1:G}", My.Application.Info.ProductName, My.Application.Info.Version)
+
+        Dim rtb As RichTextBox = New RichTextBox()
+
+        rtb.Text = My.Application.Info.Title + Environment.NewLine() _
+            + My.Application.Info.Description + Environment.NewLine() _
+            + My.Application.Info.CompanyName + Environment.NewLine() _
+            + My.Application.Info.ProductName + Environment.NewLine() _
+            + My.Application.Info.Copyright + Environment.NewLine() _
+            + My.Application.Info.Version.ToString()
+
+        System.IO.File.WriteAllText(My.Application.Info.DirectoryPath + "\Data\" + "VersionInfo.rtf", rtb.Rtf)
+        '------------------------------
+        '   Initializing Message Databse
+        '------------------------------
+        messagePackage.QueryInterface = Nothing
+        alarmContentMotor.MotorEnumType = GetType(motorAddress)
+        alarmContextBase.QueryInterface = __sensorDetailDatabase
+        alarmContentSensor.InputsEnumType = GetType(inputAddress)
+        mainIOHardware.Instance.Load(Nothing)   'load the configuration
+        mainIOHardware.__initialize()   'initialize io hardware
+        mainIOHardware.scanBit(GetType(inputAddress))   'make sure if all address valid
+        mainIOHardware.scanBit(GetType(outputAddress))
+        '------------------------------------
+        '   Linking
+        '------------------------------------
+        '----------------------------------------------------
+        '   MES panel initialize
+        '----------------------------------------------------
+        __mesCore.initialize()
+
+        Me.UserControlMes.CoreReference = __mesCore
+        '__assembly.MesInterface = MesController_Asa05067.GetInstance(__mesCore)
+        __assembly.mesReference = MesController_Asa05067.GetInstance(__mesCore)
+        __assembly.initialize()         ' initializing __aseembly data structure
+        __assembly.IVisionReference = UserControl_Vision1
+        'alarm manager local reference linkin
+        __assemblyAlarmManager = __assembly.CentralAlarmObject
+
+        messengerReference = __assembly.CentralMessenger
+        pauseBlockReference = __assembly.PauseBlock
+
+#If USE_EVISION = 1 Then
+        'todo 建立模型路徑
+        Dim modelList As New BindingSource
+        For i As Integer = 0 To __assembly.RobotSystem.aligner.TargetObjectCollection.Count - 1
+            modelList.Add(System.IO.Path.Combine(My.Application.Info.DirectoryPath, "Data", "Models", __assembly.RobotSystem.aligner.TargetObjectCollection(i).sName))
+        Next
+        Me.UserControl_Vision1.Initialize(modelList)
+#End If
+
+        '------------------------
+        '   Prepare mainUserPanel
+        '------------------------
+        Me.UserControlMainPanel1.IOXReference = __assembly
+        TabPageEnginner.Controls.Add(__assembly.raisingGUI())       'the baisc gui - engineer mode
+
+        'link setting object to userControl
+        Me.UserControlSetting1.SettingReference = __assembly.genericSettings
+        Me.UserControlSetting1.IOXLoaderAssemblyReference = __assembly
+
+        '----------------------------------------------------
+        '   After all link established  , then fire the timer
+        '----------------------------------------------------
+        '--------------------------------
+        '   Preset alarm pop
+        '--------------------------------
+        With __alarmPop
+            .buzzerFlagReference = Me.__assembly.controlFlags
+            .areaMapReference = __sensorMap
+            '.cassetteAction = AddressOf alarmCassetteEject
+        End With
+        With __dialog
+            .Controls.Add(__alarmPop)
+            .AutoSize = True
+            .ControlBox = False
+            .Text = "Error Message"
+        End With
+        '--------------------------------
+        '   Preset Tracking monitor
+        '--------------------------------
+        __assembly.start()
+
+
+        TimerRefresh.Enabled = True
+    End Sub
+
+    Private Sub uiAliveRefresh(sender As Object, e As EventArgs) Handles TimerRefresh.Tick
+
+        'Hsien , once hareware not existed , polling alarm manager and messenger only
+        If (Not True) Then
+            With __assembly
+                .CentralAlarmObject.alarmHandling()
+                .CentralMessenger.messageHandling()
+            End With
+        End If
+
+        ' ui refresh engine
+        TextBoxTime.Text = Date.Now().ToString("G")
+    End Sub
+
+    Private Sub lockSettingHandler(ByVal sender As Object, ByVal e As EventArgs) Handles pauseBlockReference.InterceptedEvent
+        Me.BeginInvoke(Sub() Me.UserControlSetting1.Enabled = True)
+    End Sub
+    Private Sub unlockSettingHandler(ByVal sender As Object, ByVal e As EventArgs) Handles pauseBlockReference.UninterceptedEvent
+        Me.BeginInvoke(Sub() Me.UserControlSetting1.Enabled = False)
+    End Sub
+
+    Private Function loginRoutine() As DialogResult
+
+        ' login stage
+        Dim currentUser As formLogin.userData = Nothing
+        Dim formLogin As formLogin = New formLogin()
+        Dim result As DialogResult = Windows.Forms.DialogResult.OK
+
+        While (currentUser Is Nothing)
+            result = formLogin.ShowDialog()
+            If (result = Windows.Forms.DialogResult.OK) Then
+                currentUser = formLogin.currentUser
+            Else
+                result = Windows.Forms.DialogResult.Cancel
+                Exit While
+            End If
+        End While
+
+        If (result = Windows.Forms.DialogResult.Cancel) Then
+            '--------------
+            '   Cancel login
+            '--------------
+            Return Windows.Forms.DialogResult.Cancel
+        End If
+
+
+
+
+        ' remove all tab-page , then added them by access level
+        MainTabControl.TabPages.Clear()
+
+        If (currentUser.level And formLogin.accessLevelEnum.END_USER) Then
+            With UserControlMainPanel1
+                '.UserControlLanePickZoneA.IsElementModuleActionVisualizing = False
+                '.UserControlLaneMiddleA.IsElementModuleActionVisualizing = False
+                '.UserControlLaneTongueA.IsElementModuleActionVisualizing = False
+                '.UserControlArm.IsElementModuleActionVisualizing = False
+            End With
+            MainTabControl.TabPages.Add(Me.TabPageMainPanel)
+            MainTabControl.TabPages.Add(Me.TabPageHistory)
+        End If
+
+        If (currentUser.level And formLogin.accessLevelEnum.SERVICE) Then
+            MainTabControl.TabPages.Add(Me.TabPageSetting)
+            MainTabControl.TabPages.Add(Me.TabPageMes)
+            '-------------------------------------------------------------------------------------------------------
+            'todo , determine the condition to lock setting page , 
+            'i.e AddHandler ascSystem.loaderMainControl.PauseBlock.interceptedEvent, AddressOf Me.lockSettingHandler
+            '-------------------------------------------------------------------------------------------------------
+        End If
+
+        If (currentUser.level And formLogin.accessLevelEnum.DEVELOPE) Then
+            With UserControlMainPanel1
+                '.UserControlLanePickZoneA.IsElementModuleActionVisualizing = True
+                '.UserControlLaneMiddleA.IsElementModuleActionVisualizing = True
+                '.UserControlLaneTongueA.IsElementModuleActionVisualizing = True
+                '.UserControlArm.IsElementModuleActionVisualizing = True
+            End With
+            MainTabControl.TabPages.Add(TabPageEnginner)
+        End If
+        ''------------------
+        ''   Apply languege
+        ''------------------
+        utilitiesUI.applyResourceOnAllControls(Me.Controls, New System.ComponentModel.ComponentResourceManager(Me.GetType()))
+        __sensorDetailDatabase.swapDataBase()
+        '__messageDataBase.swapDataBase()    ' swap database by current language
+        TextBoxUser.Text = currentUser.Account
+        __assembly.sendMessage(internalEnum.LOGIN, currentUser.Account)
+
+        If __assembly.isIGNITED = False Then
+            Me.UserControlMainPanel1.ButtonStart.Enabled = True
+        End If
+
+        Return Windows.Forms.DialogResult.OK
+    End Function
+
+    Private Sub ClickRelogin(sender As Object, e As EventArgs)
+        loginRoutine()
+    End Sub
+
+
+    '----------------------------------------------
+    '   Alarm handling pop-up
+    ''---------------------------------------------
+    Dim isAlarmDialogPoped As Boolean = False
+    Dim __alarmPop As userControlAlarmPop = New userControlAlarmPop
+    Dim __dialog As Form = New Form
+    Dim __sensorMap As userControlSensorMap = New userControlSensorMap With {.__areaDictionary = __sensorAreaDatabase}
+    Dim __result As IAsyncResult = Nothing
+
+
+    Private Sub alarmPopup(ByVal sender As alarmManager, ByVal e As alarmEventArgs) Handles __assemblyAlarmManager.alarmWaitResponse
+
+        If (Not isAlarmDialogPoped) Then
+            isAlarmDialogPoped = True   'bit lock
+
+            'Dim __control As userControlAlarmPop = New userControlAlarmPop With {.AlarmReference = sender,
+            '                                                                       .buzzerFlagReference = Me.__assembly.controlFlags,
+            '                                                                       .areaMapReference = New userControlSensorMap With {.__areaDictionary = __sensorAreaDatabase}}
+            ''-------------------------------------------------------------------------------------------------------
+            ''   If wafer jammed and possible to locate corresponding lane and cassete was on UD
+            '', offer the possibility to eject cassette
+            ''------------------------------------------------------------
+            'If (GetType(alarmContentConveyor).IsInstanceOfType(sender.CurrentAlarm) AndAlso
+            '    __assembly.laneCollection.Exists(Function(__lane As laneSubStackFlowSystem) __lane.IsSenderBelongToMe(sender.CurrentAlarm.Sender)) AndAlso
+            '    __assembly.laneCollection.Find(Function(__lane As laneSubStackFlowSystem) __lane.IsSenderBelongToMe(sender.CurrentAlarm.Sender)).stackFlowSubSystem.commonFlags.viewFlag(flagsInLoaderUnloader.CasOn_UD_ConveyerReady_f)) Then
+
+            '    Me.Invoke(Sub()
+            '                  With __control.buttonCassetteCancel
+            '                      .Enabled = True
+            '                      .Visible = True
+            '                  End With
+            '              End Sub)
+            '    __control.cassetteAction = AddressOf alarmCassetteEject 'link the eject action
+            'End If
+
+            'Me.BeginInvoke(Sub()
+            '                   Dim __dialog As Form = New Form
+            '                   With __dialog
+            '                       .Controls.Add(__control)
+            '                       .AutoSize = True
+            '                       .ControlBox = False
+            '                       .Text = "Alarm Message"
+            '                       .ShowDialog()
+            '                   End With
+            '               End Sub)
+            __alarmPop.AlarmReference = sender
+
+            __result = Me.BeginInvoke(Sub()
+                                          With __dialog
+                                              .ShowDialog()
+                                          End With
+                                          Me.EndInvoke(__result)
+                                      End Sub)
+        End If
+    End Sub
+    Private Sub alarmDialogClosed() Handles __assemblyAlarmManager.alarmReleased
+        isAlarmDialogPoped = False  'bit release
+    End Sub
+
+
+    'Sub alarmCassetteEject(__alarm As alarmContextBase)
+    '    '----------------------------------------------------------
+    '    '   Ignore and set cassette eject flag , Hsien  ,2015.06.19
+    '    '-----------------------------------------------------------
+    '    Dim __correspondingCassetteSystem As StackFlowSystemBase = __assembly.laneCollection.Find(Function(__lane As laneSubStackFlowSystem) __lane.IsSenderBelongToMe(__alarm.Sender)).stackFlowSubSystem
+
+    '    'If (__correspondingCassetteSystem.commonFlags.viewFlag(flagsInLoaderUnloader.CasOn_UD_ConveyerReady_f)) Then
+    '    '    __correspondingCassetteSystem.commonFlags.setFlag(flagsInLoaderUnloader.CasCollect_f)   'eject cassette , Hsien , 2015.09.03
+    '    'End If
+    '    __correspondingCassetteSystem._stackWaferLift.liftFlags.writeFlag(flagsInLoaderUnloader.ChangeStack_f, True)
+    'End Sub
+
+
+    Private Sub ButtonLanguage_Click(sender As Object, e As EventArgs) Handles ButtonChinese.Click, ButtonEnglish.Click
+        Select Case sender.Name
+
+            Case ButtonEnglish.Name
+                Application.CurrentCulture = Globalization.CultureInfo.CreateSpecificCulture("zh-TW")
+                utilitiesUI.applyResourceOnAllControls(Me.Controls, New System.ComponentModel.ComponentResourceManager(Me.GetType()))
+                If __assembly.isIGNITED = False Then
+                    Me.UserControlMainPanel1.ButtonStart.Enabled = True
+                End If
+
+            Case ButtonChinese.Name
+                Application.CurrentCulture = Globalization.CultureInfo.CreateSpecificCulture("en-US")
+                utilitiesUI.applyResourceOnAllControls(Me.Controls, New System.ComponentModel.ComponentResourceManager(Me.GetType()))
+                If __assembly.isIGNITED = False Then
+                    Me.UserControlMainPanel1.ButtonStart.Enabled = True
+                End If
+
+        End Select
+    End Sub
+
+    Private Sub LogInToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles TextBoxUser.Click
+        loginRoutine()
+    End Sub
+    Private Sub ApplyRuleEditorToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles ApplyRuleEditorToolStripMenuItem.Click
+        Automation.mainIOHardware.writeBit(outputAddress.Light, Not Automation.mainIOHardware.readBit(outputAddress.Light))
+
+    End Sub
+
+    Private Sub ManagerToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles ManagerToolStripMenuItem.Click
+        __assembly.RobotSystem.scara.runDialog(SCARA.compScaraBase.dialogEnum.RobotManager, Me)
+    End Sub
+
+    Private Sub Button2_Click(sender As Object, e As EventArgs) Handles Button2.Click
+        Automation.mainIOHardware.writeBit(outputAddress.Light, True)
+        __assembly.RobotSystem.aligner.flags.writeFlag(VisionAlignment.clsVisionAlignment.enumFlags.CALIBRATION, True)
+    End Sub
+
+    Private Sub Button3_Click(sender As Object, e As EventArgs) Handles Button3.Click
+        Automation.mainIOHardware.writeBit(outputAddress.Light, True)
+        __assembly.RobotSystem.scara.lock()
+        __assembly.RobotSystem.aligner.flags.writeFlag(VisionAlignment.clsVisionAlignment.enumFlags.ALIGNMENT, True)
+    End Sub
+
+    Private Sub Button4_Click(sender As Object, e As EventArgs) Handles Button4.Click
+        Automation.mainIOHardware.writeBit(outputAddress.VgC1A, Not Automation.mainIOHardware.readBit(outputAddress.VgC1A))
+    End Sub
+
+    Private Sub ReleaseToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles FreeToolStripMenuItem.Click
+        __assembly.RobotSystem.scara.free()
+    End Sub
+
+    Private Sub LockToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles LockToolStripMenuItem.Click
+        __assembly.RobotSystem.scara.lock()
+    End Sub
+
+    Private Sub Button5_Click(sender As Object, e As EventArgs) Handles ButtonGetPlaceTarget.Click
+        __assembly.RobotSystem.flags.setFlag(clsRobotSystem.flagEnum.GET_PLACE_TARGET)
+    End Sub
+
+    Private Sub ButtonGetPickTarget_Click(sender As Object, e As EventArgs) Handles ButtonGetPickTarget.Click
+        __assembly.RobotSystem.flags.setFlag(clsRobotSystem.flagEnum.GET_PICK_TARGET)
+    End Sub
+
+    Private Sub ButtonGetCalibrationTarget_Click(sender As Object, e As EventArgs) Handles ButtonGetCalibrationTarget.Click
+        __assembly.RobotSystem.flags.setFlag(clsRobotSystem.flagEnum.GET_CALIBRATION_TARGET)
+    End Sub
+
+    Private Sub TestToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles TestToolStripMenuItem.Click
+
+    End Sub
+
+    Private Sub RequestToLoadToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles RequestToLoadToolStripMenuItem.Click
+        __assembly.RobotSystem.flagRequestToLoadMeasurement.setFlag(interlockedFlag.POSITION_OCCUPIED)
+    End Sub
+
+    Private Sub RequestToUnloadToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles RequestToUnloadToolStripMenuItem.Click
+        __assembly.RobotSystem.flagRequestToUnloadMeasurement.setFlag(interlockedFlag.POSITION_OCCUPIED)
+    End Sub
+
+    Private Sub __assembly_OperationStopped(sender As Object, e As EventArgs) Handles __assembly.OperationStopped
+        UserControlMainPanel1.enableInitializingButton(Me, Nothing)
+    End Sub
+
+    Private Sub ReadFileToolStripMenuItem_Click(sender As Object, e As EventArgs) Handles ReadFileToolStripMenuItem.Click
+        Using sr As New StreamReader("Z:\OK.CSV")
+            Do While sr.Peek <> -1
+                Dim str As String = sr.ReadLine
+                Dim match1 As Match = Regex.Match(str, "\x22RES_AVE\x22.+") '".+\x22RES_AVE\x22,((-?\d+)(\.\d+)).+")
+                If match1.Success = True Then
+                    Dim ary As String() = Strings.Split(str, ",")
+                    MsgBox(ary(1))
+                End If
+                Dim match2 As Match = Regex.Match(str, "\x22POINT\x22,1")
+                If match2.Success Then
+                    Dim ary As String() = Strings.Split(str, ",")
+                    MsgBox(ary(11))
+                End If
+
+            Loop
+        End Using
+
+    End Sub
+End Class

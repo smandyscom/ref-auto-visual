@@ -1,0 +1,48 @@
+﻿Imports System.IO.Ports
+Imports System.Text
+
+Public Class FormRFIDTest
+
+    Dim __serialPort As SerialPort = New SerialPort
+    Dim __string As String = Nothing
+
+    Private Sub FormRFIDTest_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        __serialPort = New SerialPort("COM1",
+                                         9600,
+                                         Parity.None,
+                                         8,
+                                         StopBits.One)
+        'reopen , and clear buffer content
+        With __serialPort
+            .Open()
+            .DiscardInBuffer()
+            .DiscardOutBuffer()
+            .Encoding = Encoding.ASCII
+        End With
+
+        While True
+
+            __serialPort.DiscardInBuffer()
+            __serialPort.DiscardOutBuffer()
+            __serialPort.Write("~01 RMID*" & vbCr)
+
+
+            'Dim __buffer As Byte() = New Byte(128) {}
+
+            '__buffer = Encoding.ASCII.GetBytes("~01 RMID*" & vbCr)
+            '__serialPort.Write(__buffer, 0, __buffer.Length)
+
+            '__buffer = New Byte(128) {}
+            '__serialPort.Read(__buffer, 0, 128)
+
+            '__string = Encoding.ASCII.GetString(__buffer)
+
+            __string = __serialPort.ReadExisting()
+
+
+
+        End While
+
+
+    End Sub
+End Class

@@ -1,0 +1,66 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+Imports MathNet.Spatial.Euclidean
+''' <summary>
+''' Decorator of Matrix(of Double)
+''' </summary>
+''' <remarks></remarks>
+Public Class htm
+
+    Enum frameVectorEnum
+        X = 0
+        Y = 1
+        Z = 2
+    End Enum
+
+    Dim __matrixCore As Matrix(Of Double) = Nothing
+
+    Sub New(matrixCore As Matrix(Of Double))
+        Me.__matrixCore = matrixCore
+    End Sub
+
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property RotationMatrix As Matrix(Of Double)
+        Get
+            Return __matrixCore.SubMatrix(0, 3, 0, 3)
+        End Get
+        Set(value As Matrix(Of Double))
+            'update
+        End Set
+    End Property
+
+    Public Property PositionVector() As Vector(Of Double)
+        Get
+            Return __matrixCore.Column(3)
+        End Get
+        Set(ByVal value As Vector(Of Double))
+            'update
+        End Set
+    End Property
+
+    Property FrameVector(axis As frameVectorEnum) As Vector(Of Double)
+        Get
+            Return __matrixCore.Column(axis)
+        End Get
+        Set(value As Vector(Of Double))
+            'update
+        End Set
+    End Property
+
+    ''' <summary>
+    ''' Complete frameVector by cross product
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Public Sub CompleteFrameVector(__vector As frameVectorEnum)
+        'Dim __vectorX As Vector3D
+        '__vectorX.CrossProduct()
+    End Sub
+
+
+End Class

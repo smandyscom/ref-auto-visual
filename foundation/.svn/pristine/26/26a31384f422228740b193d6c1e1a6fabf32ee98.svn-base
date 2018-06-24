@@ -1,0 +1,1316 @@
+﻿Imports Automation.Components.Services
+Imports System.Text
+Imports Automation.mainIOHardware
+Public Class cylinderControl : Inherits driveBase
+    ' the basic cylinder with one actuator and two sensors on both end
+    ' potential BUG :
+    '   3. the cylinder alarm should be considered as two categrory: a. sensor unstable (delay sense not activated) b. sensor broken (target bit not trigger in-time)
+
+    Public Enum statusEnum
+        EXECUTING = &H0            ' the undertermined status when cyliner is working                EXECUTION_END = 0
+        EXECUTION_END = &H10
+        EXECUTION_END_FAIL = &H11          ' occured when command done without successfully
+    End Enum
+    Public Enum cylinderCommandEnum
+        GO_ON_END
+        GO_OFF_END
+        TEST_BOTH_END
+        '-------------
+        ' generic working flow:
+        ' NONE->EXECUTION->EXE_END
+        NONE                ' device is idle , newer command is acceptable
+        WAIT_RECALL       ' device is idle , wait caller to rewind
+    End Enum
+    Private Enum testStateEnum
+        CHECK_OFF
+        CHECK_ON
+        TESTED
+        READY
+    End Enum
+    Private Enum driveStateEnum
+        READY
+        SENSOR_ON       ' wait until sensor turns on
+        SENSOR_STABLE   ' wait until sensor satisfied stable condition
+        ALARM_HANDLING
+        GIVEUP
+        'DONE
+    End Enum
+
+    Public Overrides Function raisingGUI() As System.Windows.Forms.Control
+        Dim uc As userControlCylinder = New userControlCylinder()
+        uc.cylinderReference = Me
+        uc.PropertyView = MyBase.raisingGUI()
+        Return uc
+    End Function
+
+#Region "setup interface"
+    ' the setup interface
+    ' using delayed sense , Hsien , 2014.04.16
+    Property OnEndSensor As ULong
+        ' the sensor should be approched when cyliner on
+        Get
+            Return OnEndDelaySense.InputBit
+        End Get
+
+        Set(ByVal value As ULong)
+            OnEndDelaySense.InputBit = value
+        End Set
+    End Property
+    Property OffEndSensor As ULong
+        ' the sensor should be approched when cyliner off
+        Get
+            Return OffEndDelaySense.InputBit
+        End Get
+        Set(ByVal value As ULong)
+            OffEndDelaySense.InputBit = value
+        End Set
+
+    End Property
+    Property OnEndConfirmWidth As TimeSpan
+        Get
+            'Return onEndDelaySense.ActiveGoal
+            Return OnEndDelaySense.OnTimer.TimerGoal
+        End Get
+        Set(ByVal value As TimeSpan)
+            'onEndDelaySense.ActiveGoal = value
+            OnEndDelaySense.OnTimer.TimerGoal = value
+        End Set
+    End Property
+    Property OffEndConfirmWidth As TimeSpan
+        Get
+            'Return offEndDelaySense.ActiveGoal
+            Return OffEndDelaySense.OnTimer.TimerGoal
+        End Get
+        Set(ByVal value As TimeSpan)
+            'offEndDelaySense.ActiveGoal = value
+            OffEndDelaySense.OnTimer.TimerGoal = value
+        End Set
+    End Property
+    Property ActuatorBit As ULong = 0    ' the output bit of actuator
+    Property StrokeGoal As TimeSpan = New TimeSpan(0, 0, 0, 10)
+    Dim WithEvents endSensorCheckService As sensorCheckService = New sensorCheckService
+
+    Property IsMonitorSensor As Boolean = False ' hsien , 2015.04.04 , use to control whether keeping monitoring endSensor after drived
+    'monitor interface
+    ReadOnly Property CommandEndStatus As statusEnum
+        Get
+            'Hsien , 2015.02.13 , refine
+            If (commandInExecute = cylinderCommandEnum.WAIT_RECALL) Then
+                commandInExecute = cylinderCommandEnum.NONE
+            End If
+            Return executionEndStatus
+        End Get
+    End Property
+    ReadOnly Property ExecuteStatus As String
+        Get
+            Return commandInExecute.ToString()
+        End Get
+    End Property
+    ReadOnly Property ElapsedTime As TimeSpan
+        Get
+            'Return timeOutCount
+            Return timeOutSense.TimeElapsed
+        End Get
+    End Property
+    ReadOnly Property DriveSubState As String
+        Get
+            Return driveState.ToString()
+        End Get
+    End Property
+
+
+#End Region
+
+#Region "internal"
+    ' internal status
+    Private executionEndStatus As statusEnum = statusEnum.EXECUTION_END              ' indicate the status of cyliner , neither on OnEnd or OffEnd
+    Private commandInExecute As cylinderCommandEnum = cylinderCommandEnum.NONE
+
+    Private testState As testStateEnum = testStateEnum.READY
+    Private driveState As driveStateEnum = driveStateEnum.READY
+    Private tempState As statusEnum = statusEnum.EXECUTION_END
+
+    ' internal - components
+    Property OnEndDelaySense As sensorControl = New sensorControl()
+    Property OffEndDelaySense As sensorControl = New sensorControl()
+    Private timeOutSense As singleTimer = New singleTimer()
+
+    Protected alarmPackSensorCheck As alarmContentSensor = New alarmContentSensor() With {.Sender = Me}
+#End Region
+
+    ' the control interface
+    Public Function drive(ByVal command As cylinderCommandEnum) As statusEnum
+        '-------------------------------------------------------------
+        '   call and return current device status
+        '-------------------------------------------------------------
+        'If (CentralAlarmObject.IsAlarmed) Then
+        '    ' if alarm raised , whoever this object or other , reject all commands
+        '    Return statusEnum.EXECUTING
+        'End If
+
+        If (commandInExecute = cylinderCommandEnum.WAIT_RECALL) Then
+            '----------------------------------
+            ' last command had been executed
+            '   1. rewind execution status
+            '   2. return the execution result 
+            '----------------------------------
+            commandInExecute = cylinderCommandEnum.NONE
+            Return executionEndStatus
+        End If
+
+        If (commandInExecute <> cylinderCommandEnum.NONE) Then
+            ' command on execute , reject command override
+        Else
+            ' device in idle , accept command
+            'strokeCount = 0 ' reset error
+            commandInExecute = command
+        End If
+
+        Return statusEnum.EXECUTING
+
+    End Function
+    Protected Overrides Function process() As Integer
+
+        OnEndDelaySense.running()
+        OffEndDelaySense.running()
+        endSensorCheckService.running()
+
+        If (commandInExecute = cylinderCommandEnum.NONE Or
+            commandInExecute = cylinderCommandEnum.WAIT_RECALL) Then
+            ' performance considering
+            Return 0
+        End If
+
+        Select Case commandInExecute
+            Case cylinderCommandEnum.GO_OFF_END
+                tempState = driveCylinder(OffEndDelaySense)
+                executionEndStatus = tempState
+                If (tempState <> statusEnum.EXECUTING) Then
+                    ' if not working , go to execution end
+                    commandInExecute = cylinderCommandEnum.WAIT_RECALL
+                End If
+            Case cylinderCommandEnum.GO_ON_END
+                tempState = driveCylinder(OnEndDelaySense)
+                executionEndStatus = tempState
+                If (tempState <> statusEnum.EXECUTING) Then
+                    commandInExecute = cylinderCommandEnum.WAIT_RECALL     ' reset command
+                End If
+            Case cylinderCommandEnum.TEST_BOTH_END
+                ' 1. turn off then check off-sensor
+                ' 2. turn on then check on-sensor
+                ' 3. above test should all be passed , then this cyliner will be announced able to use
+                'flagRealStatus = statusEnum.UNDETERMINED
+                executionEndStatus = statusEnum.EXECUTING
+
+                Select Case testState
+                    Case testStateEnum.READY
+                        testState = testStateEnum.CHECK_ON
+                    Case testStateEnum.CHECK_ON
+                        tempState = driveCylinder(OnEndDelaySense)
+                        If (tempState = statusEnum.EXECUTION_END) Then
+                            testState = testStateEnum.CHECK_OFF
+                        ElseIf (tempState = statusEnum.EXECUTION_END_FAIL) Then
+                            ' error happened
+                            executionEndStatus = statusEnum.EXECUTION_END_FAIL
+                            testState = testStateEnum.READY
+                            commandInExecute = cylinderCommandEnum.WAIT_RECALL
+                        End If
+                    Case testStateEnum.CHECK_OFF
+                        tempState = driveCylinder(OffEndDelaySense)
+                        If (tempState = statusEnum.EXECUTION_END) Then
+                            testState = testStateEnum.TESTED
+                        ElseIf (tempState = statusEnum.EXECUTION_END_FAIL) Then
+                            ' error happened
+                            executionEndStatus = statusEnum.EXECUTION_END_FAIL
+                            testState = testStateEnum.READY
+                            commandInExecute = cylinderCommandEnum.WAIT_RECALL
+                        End If
+                    Case testStateEnum.TESTED
+                        testState = testStateEnum.READY          ' back to ready state
+                        executionEndStatus = statusEnum.EXECUTION_END
+                        commandInExecute = cylinderCommandEnum.WAIT_RECALL          ' 
+                    Case Else
+                End Select
+            Case cylinderCommandEnum.NONE
+                ' hold current state
+            Case cylinderCommandEnum.WAIT_RECALL
+            Case Else
+        End Select
+
+
+        Return 0
+
+    End Function
+
+    Private Function driveCylinder(ByRef endSensor As sensorControl) As statusEnum
+
+        Select Case driveState
+            Case driveStateEnum.READY
+                ' cylinder should arrive in goal time
+                timeOutSense.TimerGoal = StrokeGoal
+                timeOutSense.IsEnabled = True
+                endSensor.IsEnabled = False
+
+                'Hsien , shut sensor check servive in transit state
+                endSensorCheckService.IsEnabled = False
+
+                If (endSensor.Equals(OffEndDelaySense)) Then
+                    writeBit(ActuatorBit, False)
+                ElseIf (endSensor.Equals(OnEndDelaySense)) Then
+                    writeBit(ActuatorBit, True)
+                End If
+
+                driveState = driveStateEnum.SENSOR_ON
+            Case driveStateEnum.SENSOR_ON
+                If (readBit(endSensor.InputBit) = True) Then
+                    ' successfully , start monitoring if signal stable
+                    timeOutSense.IsEnabled = False
+                    timeOutSense.TimerGoal = StrokeGoal
+                    ' ready to sense if signal stable
+                    endSensor.IsEnabled = True
+                    timeOutSense.IsEnabled = True       'reset
+
+                    driveState = driveStateEnum.SENSOR_STABLE
+                ElseIf (timeOutSense.IsTimerTicked) Then
+                    ' failed , raising alarm (sensor failed)
+                    timeOutSense.IsEnabled = False
+
+                    With alarmPackSensorCheck
+                        .Inputs = endSensor.InputBit
+                    End With
+                    CentralAlarmObject.raisingAlarm(alarmPackSensorCheck)
+
+                    driveState = driveStateEnum.ALARM_HANDLING
+                End If
+            Case driveStateEnum.SENSOR_STABLE
+                If (endSensor.OnTimer.IsTimerTicked) Then
+                    '------------------------------
+                    '   Sensor was on On-level for a while
+                    '------------------------------
+                    ' successfully , work done
+                    timeOutSense.IsEnabled = False
+                    endSensor.IsEnabled = False
+
+                    'Hsien , start sensor check servive to monitor sensor status
+                    With endSensorCheckService
+                        .SensorsNeedToCheck.Clear()
+                        .SensorsNeedToCheck.Add(New sensorCheckService.sensorCheckCondition(endSensor.InputBit, True))
+                        .IsEnabled = IsMonitorSensor ' hsien , 2015.04.04 performance issue , keep I/O polling would increase latency  'True
+                    End With
+
+                    driveState = driveStateEnum.READY       'rewind
+                    Return statusEnum.EXECUTION_END
+
+                ElseIf (timeOutSense.IsTimerTicked) Then
+                    ' failed , raising alarm (sensor unstable)
+                    timeOutSense.IsEnabled = False
+                    endSensor.IsEnabled = False
+
+                    With alarmPackSensorCheck
+                        .Inputs = endSensor.InputBit
+                    End With
+                    CentralAlarmObject.raisingAlarm(alarmPackSensorCheck)
+
+                    driveState = driveStateEnum.ALARM_HANDLING
+                End If
+            Case driveStateEnum.ALARM_HANDLING
+                '-----------------------------
+                '   Wait user response
+                '-----------------------------
+            Case driveStateEnum.GIVEUP
+                '-----------------------------
+                '   Ignore selected
+                '-----------------------------
+                driveState = driveStateEnum.READY
+                Return statusEnum.EXECUTION_END_FAIL
+
+        End Select
+
+        Return statusEnum.EXECUTING
+    End Function
+
+    Public Sub New()
+
+        'set default time-out setting , hsien.2015.04.01
+        OnEndDelaySense.OnTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        OnEndDelaySense.OffTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        OffEndDelaySense.OnTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        OffEndDelaySense.OffTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+
+
+        With alarmPackSensorCheck
+            .Sender = Me
+            .PossibleResponse = alarmContextBase.responseWays.RETRY 'Or alarmContextBase.responseWays.IGNORE
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function()
+
+                                                                         If (commandInExecute = cylinderCommandEnum.NONE Or
+                                                                             commandInExecute = cylinderCommandEnum.WAIT_RECALL) Then
+                                                                             'on monitoring
+                                                                         Else
+
+                                                                             'on drive-execution
+                                                                             timeOutSense.TimerGoal = StrokeGoal
+                                                                             timeOutSense.IsEnabled = True  'reset timer
+                                                                             driveState = driveStateEnum.READY  'hsien , 2015.04.16
+                                                                         End If
+
+                                                                         Return True
+                                                                     End Function
+            .CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function()
+
+                                                                          If (commandInExecute = cylinderCommandEnum.NONE Or
+                                                                            commandInExecute = cylinderCommandEnum.WAIT_RECALL) Then
+                                                                              'on monitoring
+
+                                                                          Else
+                                                                              'on drive-execution
+                                                                              driveState = driveStateEnum.GIVEUP
+                                                                          End If
+
+                                                                          endSensorCheckService.IsEnabled = False 'stop monitor
+                                                                          Return True
+                                                                      End Function
+        End With
+
+
+    End Sub
+
+    'Hsien , 2015.08.31 , reconfigure end sensor check service
+    Private Sub endSensorMonitoringHandler(sender As Object, e As sensorCheckService.sensorCheckEventArgs) Handles endSensorCheckService.CheckFailed
+        If ((Not Me.IsMyAlarmCurrent() And
+            Not Me.IsMyAlarmInQueue)) Then
+            'once alarm occured , stop monitor , prevent alarm over-run , 2015.09.30 
+            alarmPackSensorCheck.Inputs = e.Content.SensorBit
+            CentralAlarmObject.raisingAlarm(alarmPackSensorCheck)   'raise alarm
+
+        End If
+    End Sub
+
+
+End Class
+'1. define cyclinder alarm
+
+
+Public Class cylinderControlTwin
+    Inherits driveBase
+    Implements IDrivable
+
+    '----------------------------------
+    '   For Those Type of Clinder with 2-Outputs , 2-End-Sensor
+    '----------------------------------
+    Public Enum cylinderCommands
+        GO_A_END
+        GO_B_END
+    End Enum
+
+
+#Region "common interface"
+    Public ReadOnly Property CommandDrivenState As IDrivable.drivenState Implements IDrivable.CommandDrivenState
+        Get
+            Return __commandDriveState
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandEndStatus As IDrivable.endStatus Implements IDrivable.CommandEndStatus
+        Get
+            If (__commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                __commandDriveState = IDrivable.drivenState.LISTENING
+            End If
+            Return __commandEndStatus
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandInExecute As Object Implements IDrivable.CommandInExecute
+        Get
+            Return __commandInExecute
+        End Get
+    End Property
+
+    Public Property StrokeGoal As TimeSpan Implements IDrivable.TimeoutLimit
+        Get
+            'Return timeoutTimer.TimerGoal
+            Return __strokeGoal
+        End Get
+        Set(value As TimeSpan)
+            'timeoutTimer.TimerGoal = value
+            __strokeGoal = value
+        End Set
+    End Property
+
+#End Region
+
+#Region "setup interface"
+    ' the setup interface
+    ' using delayed sense , Hsien , 2014.04.16
+    Property AEndSensor As ULong
+        ' the sensor should be approched when cyliner on
+        Get
+            Return aEndDelaySense.InputBit
+        End Get
+        Set(ByVal value As ULong)
+            aEndDelaySense.InputBit = value
+        End Set
+    End Property
+    Property BEndSensor As ULong
+        ' the sensor should be approched when cyliner off
+        Get
+            Return bEndDelaySense.InputBit
+        End Get
+        Set(ByVal value As ULong)
+            bEndDelaySense.InputBit = value
+        End Set
+    End Property
+    Property AEndConfirmWidth As TimeSpan
+        Get
+            'Return aEndDelaySense.ActiveGoal
+            Return aEndDelaySense.OnTimer.TimerGoal
+        End Get
+        Set(ByVal value As TimeSpan)
+            'aEndDelaySense.ActiveGoal = value
+            aEndDelaySense.OnTimer.TimerGoal = value
+        End Set
+    End Property
+    Property BEndConfirmWidth As TimeSpan
+        Get
+            'Return bEndDelaySense.ActiveGoal
+            Return bEndDelaySense.OnTimer.TimerGoal
+        End Get
+        Set(ByVal value As TimeSpan)
+            'bEndDelaySense.ActiveGoal = value
+            bEndDelaySense.OnTimer.TimerGoal = value
+        End Set
+    End Property
+
+    Property AEndActuatorBit As ULong = 0    ' the output bit of actuator
+    Property BEndActuatorBit As ULong = 0    ' the output bit of actuator
+
+    Property EndSensorCheckService As sensorCheckService = New sensorCheckService
+    Property IsMonitorSensor As Boolean = False ' hsien , 2015.04.04 , use to control whether keeping monitoring endSensor after drived
+
+#End Region
+
+    Protected __commandDriveState As IDrivable.drivenState = IDrivable.drivenState.LISTENING
+    Protected __commandEndStatus As IDrivable.endStatus = IDrivable.endStatus.EXECUTION_END
+    Protected __commandInExecute As cylinderCommands = cylinderCommands.GO_A_END
+
+    ' internal - components
+    Property aEndDelaySense As sensorControl = New sensorControl()
+    Property bEndDelaySense As sensorControl = New sensorControl()
+    Protected timeoutTimer As singleTimer = New singleTimer() With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Protected __strokeGoal As TimeSpan = New TimeSpan(0, 0, 5)
+    Protected alarmPackMonitor As alarmContentSensor = New alarmContentSensor()
+
+    Public Function drive(command As [Enum], Optional arg As Object = Nothing) As IDrivable.endStatus Implements IDrivable.drive
+
+        Select Case __commandDriveState
+            Case IDrivable.drivenState.LISTENING
+                '------------------------------
+                '   Able to accept command
+                '-------------------------------
+                __commandInExecute = command
+                timeoutTimer.IsEnabled = True
+                '-------------------------
+                '   Command accepted
+                '-------------------------
+                Select Case DirectCast(command, cylinderCommands)
+                    Case cylinderCommands.GO_A_END
+                        endSensor = aEndDelaySense
+                        otherEndSensor = bEndDelaySense
+                    Case cylinderCommands.GO_B_END
+                        endSensor = bEndDelaySense
+                        otherEndSensor = aEndDelaySense
+                    Case Else
+                End Select
+
+                __commandDriveState = IDrivable.drivenState.EXECUTING
+            Case IDrivable.drivenState.WAIT_RECALL
+                '------------------------
+                '   Last command had beed executed , rewind
+                '------------------------
+                __commandDriveState = IDrivable.drivenState.LISTENING
+                Return __commandEndStatus
+            Case IDrivable.drivenState.EXECUTING
+
+                '__commandDriveState = IDrivable.drivenState.EXECUTING
+
+        End Select
+
+        Return IDrivable.endStatus.EXECUTING
+    End Function
+    Protected Overrides Function process() As Integer
+
+        '---------------------------
+        '   Driven state-mahcine
+        '---------------------------
+        Select Case __commandDriveState
+            Case IDrivable.drivenState.LISTENING,
+                IDrivable.drivenState.WAIT_RECALL
+                Return 0
+            Case IDrivable.drivenState.EXECUTING
+                '--------------------------------
+                '   Executing
+                '--------------------------------
+                __commandEndStatus = driveCylinder()
+                If (__commandEndStatus And IDrivable.endStatus.EXECUTION_END) Then
+                    timeoutTimer.IsEnabled = False
+                    driveState = driveStateEnum.READY       'rewind
+                    __commandDriveState = IDrivable.drivenState.WAIT_RECALL
+                End If
+
+        End Select
+        '--------------------------
+        '   Running the end sensors
+        '--------------------------
+        aEndDelaySense.running()
+        bEndDelaySense.running()
+        EndSensorCheckService.running()
+        Return 0
+    End Function
+
+
+    Private Enum driveStateEnum
+        READY
+        SENSOR_ON       ' wait until sensor turns on
+        SENSOR_STABLE   ' wait until sensor satisfied stable condition
+        ALARM_HANDLING  ' the state wait user response
+        GIVEUP          ' user give up to check sensor
+    End Enum
+    Dim driveState As driveStateEnum = driveStateEnum.READY
+
+    Dim endSensor As sensorControl           'the target end
+    Dim otherEndSensor As sensorControl      'the opposite end
+
+    Private Function driveCylinder() As IDrivable.endStatus
+
+        Select Case driveState
+            Case driveStateEnum.READY
+                ' cylinder should arrive in goal time
+                timeoutTimer.TimerGoal = __strokeGoal
+                timeoutTimer.IsEnabled = True
+                endSensor.IsEnabled = False
+
+                'Hsien , shut sensor check servive in transit state
+                EndSensorCheckService.IsEnabled = False
+
+                '--------------------------------
+                ' For mutex actuator bit
+                '--------------------------------
+                If (endSensor.Equals(aEndDelaySense)) Then
+                    writeBit(AEndActuatorBit, True)
+                    writeBit(BEndActuatorBit, False)
+                ElseIf (endSensor.Equals(bEndDelaySense)) Then
+                    writeBit(BEndActuatorBit, True)
+                    writeBit(AEndActuatorBit, False)
+                End If
+
+                driveState = driveStateEnum.SENSOR_ON
+
+            Case driveStateEnum.SENSOR_ON
+                If (endSensor.IsSensorCovered And
+                    Not otherEndSensor.IsSensorCovered) Then
+                    ' successfully , start monitoring if signal stable
+                    timeoutTimer.IsEnabled = False
+                    'endSensor.OnTimer.TimerGoal = New TimeSpan(timeoutTimer.TimerGoal.Ticks)
+                    timeoutTimer.TimerGoal = __strokeGoal
+                    ' ready to sense if signal stable
+                    endSensor.IsEnabled = True
+                    timeoutTimer.IsEnabled = True       'reset
+
+                    driveState = driveStateEnum.SENSOR_STABLE
+                ElseIf (timeoutTimer.IsTimerTicked) Then
+                    ' failed , raising alarm (sensor failed)
+                    timeoutTimer.IsEnabled = False
+                    'Hsien , 2014.09.22
+                    With alarmPackMonitor
+                        If (Not endSensor.IsSensorCovered) Then
+                            .Inputs = endSensor.InputBit
+                            .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                        ElseIf (otherEndSensor.IsSensorCovered) Then
+                            .Inputs = otherEndSensor.InputBit
+                            .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                        End If
+                    End With
+                    'CType(alarmPackage, alarmContentSensor).Inputs = endSensor.InputBit
+                    CentralAlarmObject.raisingAlarm(alarmPackMonitor)
+                    driveState = driveStateEnum.ALARM_HANDLING
+                    'driveState = driveStateEnum.READY
+                    'Return IDrivable.endStatus.EXECUTION_END_FAIL
+                End If
+
+            Case driveStateEnum.SENSOR_STABLE
+                If (endSensor.OnTimer.IsTimerTicked) Then
+                    ' successfully , work done
+                    timeoutTimer.IsEnabled = False
+                    endSensor.IsEnabled = False
+
+                    '-----------------------------------------------------------
+                    'Hsien , start sensor check servive to monitor sensor status
+                    '-----------------------------------------------------------
+                    EndSensorCheckService.SensorsNeedToCheck.Clear()
+                    EndSensorCheckService.SensorsNeedToCheck.Add(New sensorCheckService.sensorCheckCondition(endSensor.InputBit, True))
+                    EndSensorCheckService.IsEnabled = IsMonitorSensor ' hsien , 2015.04.04 performance issue , keep I/O polling would increase latency  'True
+
+                    driveState = driveStateEnum.READY       'rewind
+                    Return IDrivable.endStatus.EXECUTION_END
+
+                ElseIf (timeoutTimer.IsTimerTicked) Then
+                    ' failed , raising alarm (sensor unstable)
+                    timeoutTimer.IsEnabled = False
+                    endSensor.IsEnabled = False
+                    'Hsien , 2014.09.22
+                    'CType(alarmPackage, alarmContentSensor).Inputs = endSensor.InputBit
+                    'CentralAlarmObject.raisingAlarm(Me.alarmPackage)
+                    With alarmPackMonitor
+                        .Inputs = endSensor.InputBit
+                        .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                    End With
+                    CentralAlarmObject.raisingAlarm(alarmPackMonitor)
+                    driveState = driveStateEnum.ALARM_HANDLING
+                    'driveState = driveStateEnum.READY
+
+                    'Return IDrivable.endStatus.EXECUTION_END_FAIL
+
+                End If
+            Case driveStateEnum.ALARM_HANDLING
+                '-------------------------------
+                '   The waiting state
+                '-------------------------------
+            Case driveStateEnum.GIVEUP
+                '--------------------------------
+                '   Give up this operation
+                '--------------------------------
+                driveState = driveStateEnum.READY
+                Return IDrivable.endStatus.EXECUTION_END_FAIL
+        End Select
+
+        Return IDrivable.endStatus.EXECUTING
+    End Function
+
+    Public Overrides Function raisingGUI() As Control
+        '----------------------------------------------------
+        '   Hsien , 2015.02.05
+        '----------------------------------------------------
+        Dim uc As userControlCylinderTwin = New userControlCylinderTwin
+        With uc
+            .cylinderReference = Me
+            .PropertyView = MyBase.raisingGUI()
+        End With
+        Return uc
+    End Function
+
+    Public Sub New()
+
+        'configurate default checking time
+        aEndDelaySense.OnTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        aEndDelaySense.OffTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        bEndDelaySense.OnTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+        bEndDelaySense.OffTimer.TimerGoal = New TimeSpan(0, 0, 0, 0, 10)
+
+        With alarmPackMonitor
+            .Sender = Me
+            .PossibleResponse = alarmContextBase.responseWays.RETRY 'Or alarmContextBase.responseWays.IGNORE
+            .Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function()
+                                                                         timeoutTimer.IsEnabled = True  'reset the timer
+                                                                         'driveState = driveStateEnum.SENSOR_ON  'return to the check state
+                                                                         driveState = driveStateEnum.READY
+                                                                         Return True
+                                                                     End Function
+            .CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function()
+                                                                          driveState = driveStateEnum.GIVEUP    '
+                                                                          Return True
+                                                                      End Function
+        End With
+
+    End Sub
+
+    Public Function getCommands() As ICollection Implements IDrivable.getCommands
+        Return New List(Of cylinderCommands) From {cylinderCommands.GO_A_END, cylinderCommands.GO_B_END}
+    End Function
+End Class
+
+
+Public Class cylinderControlBase
+    Inherits driveBase
+    Implements IDrivable
+
+    '----------------------------------
+    '   For Those Type of Cylinder with control flow:
+    '   1. drive
+    '   2. check end
+    '   3. check stable
+    '   4. start checkservice
+    '   Derived type should determine : 
+    '   methods:
+    '       1. trigger method
+    '       2. check end reached method
+    '       3. check end stable method
+    '   service:
+    '       1. check service when end reached
+    '----------------------------------
+    Public Enum cylinderCommands
+        GO_A_END
+        GO_B_END
+    End Enum
+
+#Region "common interface"
+    Public ReadOnly Property CommandDrivenState As IDrivable.drivenState Implements IDrivable.CommandDrivenState
+        Get
+            Return __commandDriveState
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandEndStatus As IDrivable.endStatus Implements IDrivable.CommandEndStatus
+        Get
+            If (__commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                __commandDriveState = IDrivable.drivenState.LISTENING
+            End If
+            Return __commandEndStatus
+        End Get
+    End Property
+
+    Public ReadOnly Property CommandInExecute As Object Implements IDrivable.CommandInExecute
+        Get
+            Return __commandInExecute
+        End Get
+    End Property
+
+    Public Property StrokeGoal As TimeSpan Implements IDrivable.TimeoutLimit
+        Get
+            'Return timeoutTimer.TimerGoal
+            Return __strokeGoal
+        End Get
+        Set(value As TimeSpan)
+            'timeoutTimer.TimerGoal = value
+            __strokeGoal = value
+        End Set
+    End Property
+
+#End Region
+
+    Property EnableCheckService As Boolean    'determine if check service open
+        Get
+            Return monitorCheckService.IsEnabled
+        End Get
+        Set(value As Boolean)
+            monitorCheckService.IsEnabled = True
+        End Set
+    End Property
+    '-------------------
+    '   Used to indicate the method index
+    '-------------------
+    Protected Enum methodsIndexEnum As Integer
+        TRIGGER_METHOD = 0
+        CHECK_END_REACHED_METHOD = 1
+        CHECK_END_STABLE_METHOD = 2
+
+    End Enum
+    'key : command
+    'value : methods , 1: checkMethod 2: trigger method
+    Protected methodsDictionary As Dictionary(Of cylinderCommands, Func(Of Boolean)()) = New Dictionary(Of cylinderCommands, Func(Of Boolean)())
+
+    Protected WithEvents monitorCheckService As genericCheckService = New genericCheckService
+    Property IsMonitorSensor As Boolean = False ' hsien , 2015.04.04 , use to control whether keeping monitoring endSensor after drived
+
+
+    Protected __commandDriveState As IDrivable.drivenState = IDrivable.drivenState.LISTENING
+    Protected __commandEndStatus As IDrivable.endStatus = IDrivable.endStatus.EXECUTION_END
+    Protected __commandInExecute As cylinderCommands = cylinderCommands.GO_A_END
+
+    ' internal - components
+    Protected timeoutTimer As singleTimer = New singleTimer() With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Protected __stableGoal As TimeSpan = New TimeSpan(0, 0, 0, 0, 500)  'used to check if statble
+    Protected __strokeGoal As TimeSpan = New TimeSpan(0, 0, 5)
+
+    Protected alarmPackEndFail As alarmContextBase
+
+    Public Function drive(command As [Enum], Optional arg As Object = Nothing) As IDrivable.endStatus Implements IDrivable.drive
+
+        Select Case __commandDriveState
+            Case IDrivable.drivenState.LISTENING
+                '------------------------------
+                '   Able to accept command
+                '-------------------------------
+                __commandInExecute = command
+                timeoutTimer.IsEnabled = True
+                '-------------------------
+                '   Command accepted
+                '-------------------------
+                __commandDriveState = IDrivable.drivenState.EXECUTING
+            Case IDrivable.drivenState.WAIT_RECALL
+                '------------------------
+                '   Last command had beed executed , rewind
+                '------------------------
+                __commandDriveState = IDrivable.drivenState.LISTENING
+                Return __commandEndStatus
+            Case IDrivable.drivenState.EXECUTING
+
+                '__commandDriveState = IDrivable.drivenState.EXECUTING
+
+        End Select
+
+        Return IDrivable.endStatus.EXECUTING
+    End Function
+    Protected Overrides Function process() As Integer
+        '--------------------------
+        '   Running the end sensors
+        '--------------------------
+        monitorCheckService.running()
+        '---------------------------
+        '   Driven state-mahcine
+        '---------------------------
+        Select Case __commandDriveState
+            Case IDrivable.drivenState.LISTENING,
+                IDrivable.drivenState.WAIT_RECALL
+                Return 0
+            Case IDrivable.drivenState.EXECUTING
+                '--------------------------------
+                '   Executing
+                '--------------------------------
+                __commandEndStatus = driveCylinder()
+                If (__commandEndStatus And IDrivable.endStatus.EXECUTION_END) Then
+                    timeoutTimer.IsEnabled = False
+                    driveState = driveStateEnum.READY       'rewind
+                    __commandDriveState = IDrivable.drivenState.WAIT_RECALL
+                End If
+
+        End Select
+
+        Return 0
+    End Function
+
+    Protected Enum driveStateEnum
+        READY
+        EXECUTE             'execute the trigger method
+        CHECK_SATISFIED       ' wait until sensor turns on
+        'STABLE_SATISFIED   ' wait until sensor satisfied stable condition
+        ALARM_HANDLING  ' the state wait user response
+        GIVEUP          ' user give up to check sensor
+    End Enum
+    Protected driveState As driveStateEnum = driveStateEnum.READY
+
+    Private Function driveCylinder() As IDrivable.endStatus
+
+        Select Case driveState
+            Case driveStateEnum.READY
+                driveState = driveStateEnum.EXECUTE
+                '------------------------------
+                '   Start Drive Cyclinder
+                '------------------------------
+            Case driveStateEnum.EXECUTE
+                If (methodsDictionary(__commandInExecute)(methodsIndexEnum.TRIGGER_METHOD)()) Then
+
+                    ' cylinder should arrive in goal time
+                    timeoutTimer.TimerGoal = __strokeGoal
+                    timeoutTimer.IsEnabled = True
+
+                    'Hsien , shut sensor check servive in transit state
+                    monitorCheckService.IsEnabled = False
+
+                    driveState = driveStateEnum.CHECK_SATISFIED
+                End If
+            Case driveStateEnum.CHECK_SATISFIED
+                If (methodsDictionary(__commandInExecute)(methodsIndexEnum.CHECK_END_REACHED_METHOD)()) Then
+                    ' successfully , start monitoring if signal stable
+                    ' successfully , work done
+                    '-----------------------------------------------------------
+                    'Hsien , start sensor check servive to monitor sensor status
+                    '-----------------------------------------------------------
+                    With monitorCheckService
+                        .ObjectConditionsNeedToCheck.Clear()
+                        .ObjectConditionsNeedToCheck.Add(New genericCheckService.genericCheckCondition With {.Sender = __commandInExecute,
+                                                                                                             .Condition = methodsDictionary(__commandInExecute)(methodsIndexEnum.CHECK_END_REACHED_METHOD)})
+                        .IsEnabled = IsMonitorSensor ' hsien , 2015.04.04 performance issue , keep I/O polling would increase latency  ' true
+                    End With
+
+                    driveState = driveStateEnum.READY       'rewind
+                    Return IDrivable.endStatus.EXECUTION_END
+
+                ElseIf (timeoutTimer.IsTimerTicked) Then
+                    ' failed , raising alarm (sensor failed)
+                    CentralAlarmObject.raisingAlarm(alarmPackEndFail)   'end failed
+                    driveState = driveStateEnum.ALARM_HANDLING
+                End If
+
+            Case driveStateEnum.ALARM_HANDLING
+                '-------------------------------
+                '   The waiting state
+                '-------------------------------
+            Case driveStateEnum.GIVEUP
+                '--------------------------------
+                '   Give up this operation
+                '--------------------------------
+                driveState = driveStateEnum.READY
+                Return IDrivable.endStatus.EXECUTION_END_FAIL
+        End Select
+
+        Return IDrivable.endStatus.EXECUTING
+    End Function
+
+    Public Overrides Function raisingGUI() As Control
+        '----------------------------------------------------
+        '   Hsien , 2015.02.05
+        '----------------------------------------------------
+        Dim uc As userControlCylinderBase = New userControlCylinderBase
+        With uc
+            .cylinderReference = Me
+            .PropertyView = MyBase.raisingGUI()
+        End With
+        Return uc
+    End Function
+
+
+
+    Public Sub New()
+
+        '--------------------------------------
+        '   Configure Default Method Pairs
+        '--------------------------------------
+        methodsDictionary.Add(cylinderCommands.GO_A_END, New Func(Of Boolean)() {New Func(Of Boolean)(Function() (True)), New Func(Of Boolean)(Function() (True)), New Func(Of Boolean)(Function() (True))})
+        methodsDictionary.Add(cylinderCommands.GO_B_END, New Func(Of Boolean)() {New Func(Of Boolean)(Function() (True)), New Func(Of Boolean)(Function() (True)), New Func(Of Boolean)(Function() (True))})
+    End Sub
+
+
+    'Hsien , 2015.08.31 , reconfigure end sensor check service
+    Private Sub endSensorMonitoringHandler(sender As Object, e As genericCheckService.genericCheckEventArgs) Handles monitorCheckService.CheckFailed
+        If ((Not Me.IsMyAlarmCurrent() And
+            Not Me.IsMyAlarmInQueue)) Then
+            'once alarm occured , stop monitor , prevent alarm over-run , 2015.09.30 
+
+            '-------------------------
+            '   Prepare alarm message
+            '-------------------------
+
+            CentralAlarmObject.raisingAlarm(alarmPackEndFail)   'raise alarm
+
+        End If
+    End Sub
+
+    Public Function getCommands() As ICollection Implements IDrivable.getCommands
+        'enginnering GUI usage
+        Return methodsDictionary.Keys
+    End Function
+End Class
+
+Public Class cylinderVirtual
+    Inherits cylinderControlBase
+    '--------------------------------------------------
+    '   Used to demostrate/verify cylinder control base
+    '--------------------------------------------------
+
+    Enum virtualControlFlagsEnum
+        END_ACTURATOR
+        END1_SENSOR
+        END2_SENSOR
+    End Enum
+
+    Public virtualControlFlags As flagController(Of virtualControlFlagsEnum) = New flagController(Of virtualControlFlagsEnum)
+
+    Function triggerMethod() As Boolean
+
+        Select Case __commandInExecute
+            Case cylinderCommands.GO_A_END
+                virtualControlFlags.setFlag(virtualControlFlagsEnum.END_ACTURATOR)
+            Case cylinderCommands.GO_B_END
+                virtualControlFlags.resetFlag(virtualControlFlagsEnum.END_ACTURATOR)
+            Case Else
+
+        End Select
+
+        Return True
+    End Function
+
+    Function checkEndReached() As Boolean
+
+        Select Case __commandInExecute
+            Case cylinderCommands.GO_A_END
+                Return virtualControlFlags.viewFlag(virtualControlFlagsEnum.END1_SENSOR)
+            Case cylinderCommands.GO_B_END
+                Return virtualControlFlags.viewFlag(virtualControlFlagsEnum.END2_SENSOR)
+            Case Else
+
+        End Select
+
+        Return False
+    End Function
+
+    Sub New()
+        'method configuration
+        methodsDictionary.Clear()
+        methodsDictionary.Add(cylinderCommands.GO_A_END,
+                              {New Func(Of Boolean)(AddressOf triggerMethod),
+                              Function() (virtualControlFlags.viewFlag(virtualControlFlagsEnum.END1_SENSOR)),
+                              Function() (virtualControlFlags.viewFlag(virtualControlFlagsEnum.END1_SENSOR))})
+        methodsDictionary.Add(cylinderCommands.GO_B_END,
+                      {New Func(Of Boolean)(AddressOf triggerMethod),
+                      Function() (virtualControlFlags.viewFlag(virtualControlFlagsEnum.END2_SENSOR)),
+                      Function() (virtualControlFlags.viewFlag(virtualControlFlagsEnum.END2_SENSOR))})
+        'alarm pack configuration
+        Me.alarmPackEndFail = New alarmContentSensor() With {.Sender = Me,
+                                                           .Inputs = 0,
+                                                           .AdditionalInfo = "End failed"}
+        With CType(alarmPackEndFail, alarmContentSensor)
+            .Sender = Me
+            .Inputs = 0
+            .AdditionalInfo = "End failed"
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                         timeoutTimer.IsEnabled = True  'reset
+                                                                         driveState = cylinderControlBase.driveStateEnum.EXECUTE
+                                                                         Return True
+                                                                     End Function
+            .CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                          driveState = driveStateEnum.GIVEUP
+                                                                          Return True
+                                                                      End Function
+        End With
+
+    End Sub
+
+End Class
+
+
+Public Class alarmContextMultiSensors
+    Inherits alarmContentSensor
+
+    Public Overrides Property Inputs As ULong
+        Get
+            If (SensorConditionList.Count > 0) Then
+                Return SensorConditionList.First.Key.InputBit
+            End If
+
+            Return MyBase.Inputs
+        End Get
+        Set(value As ULong)
+            __input = value
+        End Set
+    End Property
+    Property SensorConditionList As List(Of KeyValuePair(Of sensorControl, alarmReasonSensor)) = New List(Of KeyValuePair(Of sensorControl, alarmReasonSensor))
+
+    Public Overrides Function ToString() As String
+        'todo , output formatted strings
+        Try
+
+            Dim __string As StringBuilder = New StringBuilder()
+            For Each pair As KeyValuePair(Of sensorControl, alarmReasonSensor) In SensorConditionList
+                Dim __sensorName As [Enum] = [Enum].ToObject(InputsEnumType, pair.Key.InputBit)
+                __string.AppendLine(String.Format("{0} , {1}", __sensorName, pair.Value))
+            Next
+
+            Return __string.ToString()
+
+        Catch ex As Exception
+            'todo 
+            Return "alarmContextMultiSensors , error"
+        End Try
+    End Function
+
+End Class
+
+Public Class cylinderSingleOutMultiCheck
+    Inherits cylinderControlBase
+    '----------------------------------
+    '   The cylinder with one actuator but dual end sensor on single end
+    '----------------------------------
+
+    Public endASensorGroup As List(Of sensorControl) = New List(Of sensorControl)
+    Public endBSensorGroup As List(Of sensorControl) = New List(Of sensorControl)
+    Public actuatorBit As ULong = 0
+
+
+    Function triggerAend() As Boolean
+        writeBit(actuatorBit, False)  'trigger
+        'setup alarmpackage
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .SensorConditionList.Clear()    'clear the list
+
+            For Each sensor As sensorControl In endASensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON))
+            Next
+            For Each sensor As sensorControl In endBSensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF))
+            Next
+        End With
+        Return True
+    End Function
+    Function triggerBend() As Boolean
+        writeBit(actuatorBit, True)  'trigger
+        'setup alarmpackage
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .SensorConditionList.Clear()    'clear the list
+
+            For Each sensor As sensorControl In endASensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF))
+            Next
+            For Each sensor As sensorControl In endBSensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON))
+            Next
+        End With
+        Return True
+    End Function
+
+
+    Function isAllUncovered(group As List(Of sensorControl)) As Boolean
+        'return value : true : all sensor is uncovered (or no any sensor need to check), false : any of one convered
+        'return value : true : all sensor is convered , false : any of one unconvered
+        Return (group.Count = 0) Or group.TrueForAll(Function(__sensor As sensorControl) (Not __sensor.IsSensorCovered))
+    End Function
+    Function isAllCovered(group As List(Of sensorControl)) As Boolean
+        'return value : true : all sensor is convered , false : any of one unconvered
+        Return (group.Count = 0) Or group.TrueForAll(Function(__sensor As sensorControl) (__sensor.IsSensorCovered))
+    End Function
+
+    Sub New()
+        'configure methods
+        methodsDictionary.Clear()
+        methodsDictionary.Add(cylinderCommands.GO_A_END,
+                              {New Func(Of Boolean)(AddressOf triggerAend),
+                               Function() (isAllCovered(endASensorGroup) And isAllUncovered(endBSensorGroup)),
+                               Function() (isAllCovered(endASensorGroup) And isAllUncovered(endBSensorGroup))})
+        methodsDictionary.Add(cylinderCommands.GO_B_END,
+                      {New Func(Of Boolean)(AddressOf triggerBend),
+                       Function() (isAllCovered(endBSensorGroup) And isAllUncovered(endASensorGroup)),
+                       Function() (isAllCovered(endBSensorGroup) And isAllUncovered(endASensorGroup))})
+        'alarm configuration
+        Me.alarmPackEndFail = New alarmContextMultiSensors
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .Sender = Me
+            .PossibleResponse = alarmContextBase.responseWays.RETRY 'Hsien , 2015.10.05 , retry only
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+
+                                                                         If (__commandDriveState = IDrivable.drivenState.LISTENING Or
+                                                                            __commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                                                                             'on monitoring
+                                                                         Else
+                                                                             'on method execution
+                                                                             timeoutTimer.IsEnabled = True  'timer reset
+                                                                             driveState = driveStateEnum.READY  'Hsien , 2015.04.16 , re-drive
+                                                                         End If
+
+                                                                         Return True
+                                                                     End Function
+            .CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+
+                                                                          If (__commandDriveState = IDrivable.drivenState.LISTENING Or
+                                                                              __commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                                                                              'on monitoring
+                                                                          Else
+                                                                              'on method execution
+                                                                              driveState = driveStateEnum.GIVEUP
+                                                                          End If
+
+                                                                          monitorCheckService.IsEnabled = False
+                                                                          Return True
+                                                                      End Function
+        End With
+
+    End Sub
+
+End Class
+Public Class cylinderTwinOutMultiCheck
+    Inherits cylinderControlBase
+
+
+    '----------------------------------
+    '   For Those Type of Clinder with 2-Outputs , multi-End-Sensor
+    '----------------------------------
+    Public endASensorGroup As List(Of sensorControl) = New List(Of sensorControl) 'a side should be on
+    Public endBSensorGroup As List(Of sensorControl) = New List(Of sensorControl) 'b side should be on
+    Public actuatorAEndBit As ULong
+    Public actuatorBEndBit As ULong
+    Public Overloads Function drive(ByVal command As cylinderControlBase.cylinderCommands) As IDrivable.endStatus
+        Return MyBase.drive(command)
+    End Function
+    Function triggerAend() As Boolean
+        writeBit(actuatorAEndBit, True)  'trigger
+        writeBit(actuatorBEndBit, False)  'trigger
+        'setup alarmpackage
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .SensorConditionList.Clear()    'clear the list
+
+            For Each sensor As sensorControl In endASensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON))
+            Next
+            For Each sensor As sensorControl In endBSensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF))
+            Next
+        End With
+        Return True
+    End Function
+    Function triggerBend() As Boolean
+        writeBit(actuatorAEndBit, False)  'trigger
+        writeBit(actuatorBEndBit, True)  'trigger
+        'setup alarmpackage
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .SensorConditionList.Clear()    'clear the list
+
+            For Each sensor As sensorControl In endASensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF))
+            Next
+            For Each sensor As sensorControl In endBSensorGroup
+                .SensorConditionList.Add(New KeyValuePair(Of sensorControl, alarmContentSensor.alarmReasonSensor)(sensor, alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON))
+            Next
+        End With
+        Return True
+    End Function
+    Function isAllUncovered(group As List(Of sensorControl)) As Boolean
+        'return value : true : all sensor is uncovered (or no any sensor need to check), false : any of one convered
+        'return value : true : all sensor is convered , false : any of one unconvered
+        Return (group.Count = 0) Or group.TrueForAll(Function(__sensor As sensorControl) As Boolean
+                                                         Return Not __sensor.IsSensorCovered
+                                                     End Function)
+    End Function
+    Function isAllCovered(group As List(Of sensorControl)) As Boolean
+        'return value : true : all sensor is convered , false : any of one unconvered
+        Return (group.Count = 0) Or group.TrueForAll(Function(__sensor As sensorControl) As Boolean
+                                                         Return __sensor.IsSensorCovered
+                                                     End Function)
+    End Function
+
+    Sub New()
+        'configure methods
+        methodsDictionary.Clear()
+        methodsDictionary.Add(cylinderCommands.GO_A_END,
+                              {New Func(Of Boolean)(AddressOf triggerAend),
+                               Function() (isAllCovered(endASensorGroup) And isAllUncovered(endBSensorGroup)),
+                               Function() (isAllCovered(endASensorGroup) And isAllUncovered(endBSensorGroup))})
+        methodsDictionary.Add(cylinderCommands.GO_B_END,
+                      {New Func(Of Boolean)(AddressOf triggerBend),
+                       Function() (isAllCovered(endBSensorGroup) And isAllUncovered(endASensorGroup)),
+                       Function() (isAllCovered(endBSensorGroup) And isAllUncovered(endASensorGroup))})
+        'alarm configuration
+        Me.alarmPackEndFail = New alarmContextMultiSensors
+        With CType(alarmPackEndFail, alarmContextMultiSensors)
+            .Sender = Me
+            .PossibleResponse = alarmContextBase.responseWays.RETRY
+            .CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+
+                                                                         If (__commandDriveState = IDrivable.drivenState.LISTENING Or
+                                                                            __commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                                                                             'on monitoring
+                                                                         Else
+                                                                             'on method exectuion
+                                                                             timeoutTimer.IsEnabled = True  'timer reset
+                                                                             driveState = driveStateEnum.READY  'Hsien , 2015.04.16 , re-drive
+                                                                         End If
+
+                                                                         Return True
+                                                                     End Function
+            .CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+
+                                                                          If (__commandDriveState = IDrivable.drivenState.LISTENING Or
+                                                                             __commandDriveState = IDrivable.drivenState.WAIT_RECALL) Then
+                                                                              'on monitoring
+                                                                          Else
+                                                                              'on method execution
+                                                                              driveState = driveStateEnum.GIVEUP
+                                                                          End If
+
+                                                                          monitorCheckService.IsEnabled = False
+
+                                                                          Return True
+                                                                      End Function
+        End With
+        'Me.alarmPackEndUnstable = Me.alarmPackEndFail
+
+    End Sub
+End Class

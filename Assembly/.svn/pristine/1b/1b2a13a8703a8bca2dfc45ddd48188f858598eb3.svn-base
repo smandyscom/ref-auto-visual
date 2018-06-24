@@ -1,0 +1,61 @@
+下午 07:23 2017/2/17
+1. T_S0_C3REAL Search failed - done
+
+下午 06:50 2017/2/21
+1. Cognex Toolblock Link At Beginning
+2. Interact , let user put gripper before calibration - done
+
+上午 08:54 2017/2/24
+1. Raise smarpod in the end of procedure - did
+2. check gripper interfere by SNS HA - done
+3. image file handling procedure
+4. load toolbox at initial of process - did
+
+上午 08:37 2017/3/7
+1. Intensity Map
+2. Main page trigger procedures
+3. Anti-collision sensor for gripper....added a sd sensor on X-stage
+4. Change vpp X,Y output format
+5. tilt small angle for C3 calibration - no need
+6. gripper enable relay
+7. auto focusing to get z value - future
+8. scale matrix cascaded on C1C2C3 - no need
+9. setting page - done
+10.
+
+上午 08:48 2017/3/9
+1. Position Miss align Issue
+	a. check different z
+	b. if ccd distortion pattern?
+
+下午 05:36 2017/3/9
+1. break process if alarm happened 
+
+下午 06:27 2017/3/10
+1. LPC Edge is not flat
+
+上午 09:33 2017/3/13
+1. Tests
+	a. motor latch - done
+	b. distance meter driver - done
+	c. C4 calibration - done
+	d. dm calibration - working
+	e. lpc mark
+	f. lpc mark
+2. Todos
+	
+	b. die mark
+	c. dry alignment
+		i. output : scanned intesity map
+	d. procedure control
+	e. daq driver
+	f. numerical method
+
+下午 11:29 2017/3/13
+1. use previous x,y,z,a,b,c to get next error gain?
+	
+	a. eproxy calibration implementation
+
+
+下午 07:04 2017/3/14
+1. tolerance the setting 

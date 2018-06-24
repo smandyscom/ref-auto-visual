@@ -1,0 +1,571 @@
+﻿Imports Automation
+Imports Automation.Components
+Imports Automation.Components.Services
+Imports Automation.Components.CommandStateMachine
+Imports Automation.mainIOHardware
+
+Public Class LoadStation
+    Inherits systemControlPrototype
+
+    Property TargetLaneReferenceCollection As List(Of shiftDataCollection) = New List(Of shiftDataCollection)
+
+    Dim currentTarget As shiftDataCollection
+    Public TriggerPosition As shiftDataCollection = New shiftDataCollection With {.DataCount = 5}  'for checking which AOI has to be Triggered by wafersensor at arm
+    Property beltmotion As Integer
+
+    Public flagIsAbleLoad As flagController(Of interlockedFlag) 'ready to link
+
+    Dim currentPosition As Integer 'PPU
+    Dim oldPosition As Integer 'PPU
+    Property loadingSpeed As Integer 'for user to control how many distance have to place wafer
+    Dim ppm = 640
+    Dim ap As alarmContentSensor = New alarmContentSensor With {.Sender = Me}
+    Property count As ULong
+    Dim WaferCountOnLane As List(Of Integer) = New List(Of Integer)
+    Public CMotorPointXLane As List(Of cMotorPoint) = New List(Of cMotorPoint)
+    Property NGorOK As New List(Of Boolean)
+    Dim prostrp As Integer
+    Public doorCheckService As sensorCheckService
+    Public airMonitor As sensorCheckService = New sensorCheckService
+    Dim HearBeatTimer As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Property CheckHeartBeat As Boolean = True
+
+
+#Region "Motor Point"
+    Public Enum XaxisPosition
+        AOI_Position
+        Place_conveyer
+        Place_Buffer
+    End Enum
+    Public Enum YaxisPosition
+        Up
+        LaneDown
+        ConveyerDown
+        BufferDown
+    End Enum
+#End Region
+
+    Public Enum ControlEnum
+
+        ABLE_IGNITE
+        AOI_ALLBYPASS
+        Start
+        checkIOXsignal
+        PAUSE_PRESSED
+    End Enum
+
+#Region "control members"
+    Public AOIHandshakeCollection As New List(Of loadHandshake)
+
+    '===== Output =======
+    Public vacuumBreaker As Integer
+    Public VacuumGeneratorCollection As New List(Of Integer)
+
+    '===== Input =======
+    Public VacuumSensorCollection As List(Of Integer) = New List(Of Integer)
+
+    Dim tmr As singleTimer = New singleTimer
+    Public motorX As motorControl = New motorControl With {.IsEnabled = True}
+    Public motorY As motorControl = New motorControl With {.IsEnabled = True}
+    Public beltmotor As motorControl = New motorControl With {.IsEnabled = True}
+    Public controlFlag As flagController(Of ControlEnum) = New flagController(Of ControlEnum)
+
+    Public IOX_Ready As sensorControl = New sensorControl  'Should_be_ON
+    Public HearBeat As sensorControl = New sensorControl With {.IsEnabled = True}  'Should_be_Toggle
+
+#End Region
+
+    Function stateIGNITE() As Integer
+        Select Case systemSubState
+            Case 0
+
+                If controlFlag.readFlag(ControlEnum.ABLE_IGNITE) Then
+                    motorX.drive(motorControl.motorCommandEnum.GO_HOME)
+                    motorY.drive(motorControl.motorCommandEnum.GO_HOME)
+
+                    oldPosition = beltmotor.FeedBackPosition
+                    cycleTimer.IsEnabled = True
+                    systemSubState = 5
+                End If
+
+            Case 5 'check Motor Homing Done
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END And
+                    motorY.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 6
+                End If
+
+            Case 6 'wait start flag
+                If controlFlag.readFlag(ControlEnum.Start) = True Then
+                    systemSubState = 10
+                End If
+
+            Case 10
+                motorX.drive(motorControl.motorCommandEnum.GO_POSITION, CMotorPointXLane(0))
+                motorY.drive(motorControl.motorCommandEnum.GO_POSITION, YaxisPosition.Up)
+                systemSubState = 15
+
+            Case 15 'check Motor motion done
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END And
+                    motorY.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+
+                    AOIHandshakeCollection.ForEach(Sub(obj As loadHandshake)
+                                                       obj.controlFlag.setFlag(loadHandshake.controlEnum.Beable_Ignite)
+                                                   End Sub)
+
+                    systemMainState = systemStatesEnum.EXECUTE 'Change Main State to EXECUTE
+                End If
+
+        End Select
+        Return 0
+    End Function
+
+    Function stateEXECUTE() As Integer
+
+        Select Case systemSubState
+
+            Case 0
+
+                __cycleTime = cycleTimer.TimeElapsed    'backup
+                cycleTimer.IsEnabled = True 'restart
+
+                NGorOK.Clear()
+                WaferCountOnLane.Clear()
+
+
+                'Count the wafer on the TargetLanes
+                For i As Integer = 0 To TargetLaneReferenceCollection.Count - 1
+                    Dim count = 0
+                    TargetLaneReferenceCollection(i).DataCollection.ForEach(Sub(obj As shiftDataPackBase)
+                                                                                If obj.IsPositionOccupied = True Then
+                                                                                    count += 1
+                                                                                End If
+                                                                            End Sub)
+                    WaferCountOnLane.Add(count)
+                Next
+
+
+                'If any Lane is ready (ModuleAction) then go pick position, end this select case
+                For i As Integer = 0 To TargetLaneReferenceCollection.Count - 1
+                    If TargetLaneReferenceCollection(i).ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) Then
+                        motorX.drive(motorControl.motorCommandEnum.GO_POSITION, CMotorPointXLane(i))
+                        currentTarget = TargetLaneReferenceCollection(i)
+                        systemSubState = 30
+                        Exit Select
+                    End If
+                Next
+
+                'if no Lane ModueAction, find which lane has Max WaferCount the go lane position
+                Dim index As Integer = WaferCountOnLane.FindIndex(Function(obj As Integer) As Boolean
+                                                                      Return obj.Equals(WaferCountOnLane.Max)
+                                                                  End Function)
+                motorX.drive(motorControl.motorCommandEnum.GO_POSITION, CMotorPointXLane(index))
+                systemSubState = 10
+
+
+            Case 10 'check motion done
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+
+                    systemSubState = 20
+                End If
+
+                '---------------------------------
+                '   Chasing the target lane
+                '---------------------------------
+            Case 20 'wait for any Lane is ModuleAcgion
+                For i As Integer = 0 To TargetLaneReferenceCollection.Count - 1
+                    If TargetLaneReferenceCollection(i).ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) Then
+                        motorX.drive(motorControl.motorCommandEnum.GO_POSITION, CMotorPointXLane(i))
+                        currentTarget = TargetLaneReferenceCollection(i)
+                        systemSubState = 30
+                        Exit For
+                    End If
+                Next
+
+
+            Case 30 'check motion done
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 40
+                End If
+
+                '---------------------------------
+                '   Start To Pick
+                '---------------------------------
+            Case 40 'motorY down to grap wafer position and check motion done
+                If motorY.drive(motorControl.motorCommandEnum.GO_POSITION, YaxisPosition.LaneDown) =
+                    motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 50
+                End If
+
+            Case 50 'check conveyer bypass and vacuumGenerators ON to grap wafer
+                writeBit(vacuumBreaker, False)
+
+                For index = 0 To 4
+                    '  If controlFlag.viewFlag(index) = False Then
+                    If currentTarget.DataCollection(index).IsPositionOccupied = True Then
+                        writeBit(VacuumGeneratorCollection(index), True)
+                    End If
+                Next
+                tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 200) : tmr.IsEnabled = True
+                systemSubState = 60
+
+            Case 60 'wait some times
+                If tmr.IsTimerTicked Then
+                    systemSubState = 65
+                End If
+
+
+            Case 65 'wafer on grapper and motorY up
+                If motorY.drive(motorControl.motorCommandEnum.GO_POSITION, YaxisPosition.Up) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 70
+                End If
+
+            Case 70 'check VacuumSensorCollection
+                systemSubState = 71
+                For i = 0 To 4
+                    If readBit(VacuumGeneratorCollection(i)) = True Then
+                        If readBit(VacuumSensorCollection(i)) = False Then
+                            ap.AdditionalInfo = "Arm does not grap wafer"
+                            ap.Inputs = VacuumSensorCollection(i)
+                            ap.Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                            ap.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() As Boolean
+                                                                                           systemSubState = 70
+                                                                                           Return True
+                                                                                       End Function
+                            ap.CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                                            systemSubState = 71
+                                                                                            Return True
+                                                                                        End Function
+                            CentralAlarmObject.raisingAlarm(ap)
+                        Else
+                            TriggerPosition.DataCollection(i).IsPositionOccupied = True
+                        End If
+                    End If
+                Next
+
+            Case 71 'reset ModuleAction
+                currentTarget.ModuleAction.resetFlag(interlockedFlag.POSITION_OCCUPIED) 'Hsien , release conveyor , Hsien , 2015.04.29
+                systemSubState = 75
+
+                '---------------------------------
+                '   End of Pick
+                '---------------------------------
+
+
+            Case 75
+                ' check if AOI all bypass
+                If AOIHandshakeCollection.TrueForAll(Function(obj As loadHandshake)
+                                                         Return obj.controlFlag.viewFlag(loadHandshake.controlEnum.AOI_ByPass)
+                                                     End Function) Then
+                    controlFlag.setFlag(ControlEnum.AOI_ALLBYPASS)
+                Else
+                    controlFlag.resetFlag(ControlEnum.AOI_ALLBYPASS)
+                End If
+                systemSubState = 80
+
+            Case 80 'check AOI_BYPASS flag
+                If controlFlag.viewFlag(ControlEnum.AOI_ALLBYPASS) = False Then
+                    systemSubState = 90
+                ElseIf controlFlag.viewFlag(ControlEnum.AOI_ALLBYPASS) Then
+                    systemSubState = 110 'BypassResult True go conveyer 
+                End If
+
+            Case 90 'motorX move to AOI station
+                If motorX.drive(motorControl.motorCommandEnum.GO_POSITION, XaxisPosition.AOI_Position) =
+                motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 95
+                End If
+
+            Case 95 'check wafer senosr to modify Occupied status
+                For i = 0 To 4
+                    If readBit(VacuumSensorCollection(i)) = True Then
+                        TriggerPosition.DataCollection(i).IsPositionOccupied = True
+                    Else
+                        TriggerPosition.DataCollection(i).IsPositionOccupied = False 'If there is no wafer at arm, clear ouput vacuumGenerator
+                        writeBit(VacuumGeneratorCollection(i), False)
+                    End If
+                Next
+                systemSubState = 100
+
+            Case 100 'check which conveyer is bypass and  send trigger flag  
+                For index = 0 To 4  'no conveyer and no AOI bypass --> send Trigger
+                    If TriggerPosition.DataCollection(index).IsPositionOccupied = True And AOIHandshakeCollection(index).controlFlag.viewFlag(loadHandshake.controlEnum.AOI_ByPass) = False Then
+                        AOIHandshakeCollection(index).controlFlag.setFlag(loadHandshake.controlEnum.Start_Trigger)
+                        sendMessage(" AOI Trigger num" & index.ToString)
+                    ElseIf TriggerPosition.DataCollection(index).IsPositionOccupied = False Then
+                        AOIHandshakeCollection(index).controlFlag.resetFlag(loadHandshake.controlEnum.Start_Trigger)
+                        sendMessage("NO Trigger num" & index.ToString)
+                    End If
+                Next
+                tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 200) : tmr.IsEnabled = True
+                systemSubState = 105
+
+            Case 105 'wait All CCD captured
+                If AOIHandshakeCollection.TrueForAll(Function(obj As loadHandshake) As Boolean
+                                                         Return Not obj.controlFlag.viewFlag(loadHandshake.controlEnum.Start_Trigger)
+                                                     End Function) Then
+
+                    systemSubState = 110
+
+                End If
+
+            Case 110 'go to place position
+                motorX.drive(motorControl.motorCommandEnum.GO_POSITION, XaxisPosition.Place_conveyer)
+                systemSubState = 115
+
+            Case 115
+                If (flagIsAbleLoad.viewFlag(interlockedFlag.POSITION_OCCUPIED)) Then
+                    systemSubState = 116
+                End If
+
+            Case 116 'check IOX Ready signal
+                If controlFlag.viewFlag(ControlEnum.checkIOXsignal) = True Then   'have to check
+                    If readBit(IOX_Ready.InputBit) = True Then
+                        HearBeatTimer.IsEnabled = True
+                        systemSubState = 117
+                    Else
+                        ap.Inputs = IOX_Ready.InputBit
+                        ap.Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                        ap.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() (True)
+                        ap.CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                                        systemSubState = 117
+                                                                                        Return True
+                                                                                    End Function
+                        ap.AdditionalInfo = "IOX Ready Signal Should Be ON"
+                        CentralAlarmObject.raisingAlarm(ap)
+                    End If
+                Else  'dont check IOX signal
+                    HearBeatTimer.IsEnabled = True
+                    systemSubState = 117
+                End If
+
+
+
+
+            Case 117
+                If CheckHeartBeat = True Then
+                    If HearBeat.RisingEdge.IsDetected Or HearBeat.FallenEdge.IsDetected Then
+                        systemSubState = 118
+                    ElseIf HearBeatTimer.IsTimerTicked Then
+                        sendMessageTimed(statusEnum.GENERIC_MESSAGE, "IP40,R0-4-0  Do not detect Unloader HeartBeat Signal")
+                        HearBeatTimer.IsEnabled = True
+                        systemSubState = 117
+                    End If
+                Else
+                    systemSubState = 118
+                End If
+
+
+            Case 118 'check motion done
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 120
+                End If
+
+
+            Case 120 'check each handshakes GetResult ON and get result
+                If AOIHandshakeCollection.TrueForAll(Function(obj As loadHandshake) (obj.controlFlag.viewFlag(loadHandshake.controlEnum.GetResult) = True)) Then
+                    AOIHandshakeCollection.ForEach(Sub(obj As loadHandshake) obj.controlFlag.resetFlag(loadHandshake.controlEnum.GetResult))
+                    For i As Integer = 0 To AOIHandshakeCollection.Count - 1
+                        NGorOK.Add(AOIHandshakeCollection(i).NGorOK)
+                    Next
+                    systemSubState = 130
+                End If
+
+            Case 130 'check wafer NGorOK
+                Dim AllTrue As List(Of Boolean) = New List(Of Boolean)
+                For index As Integer = 0 To 4
+                    If TriggerPosition.DataCollection(index).IsPositionOccupied = True Then
+                        AllTrue.Add(Not AOIHandshakeCollection(index).NGorOK)
+                    Else
+                        AllTrue.Add(True)
+                    End If
+                Next
+                If AllTrue.TrueForAll(Function(obj As Boolean) (obj = True)) Then    'If all NGorOK is false, motorX  go buffer station directly
+                    systemSubState = 180
+                Else
+                    systemSubState = 131
+                End If
+
+            Case 131 'check speed motion 
+                currentPosition = beltmotor.FeedBackPosition
+                '          pulse count/ppm = mm
+                beltmotion = PosDist(currentPosition, oldPosition) / ppm
+                If beltmotion >= loadingSpeed Then '若輸送帶速度超過所設定之間距
+                    systemSubState = 135
+                End If
+
+
+            Case 135  'motorY down
+                If motorY.drive(motorControl.motorCommandEnum.GO_POSITION, YaxisPosition.ConveyerDown) = motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 140
+                End If
+
+            Case 140  'place wafer, motorY at down position
+                For index = 0 To 4
+                    If NGorOK(index) = True Then 'OK
+                        writeBit(VacuumGeneratorCollection(index), False)
+                        TriggerPosition.DataCollection(index).IsPositionOccupied = False
+                        count += 1
+                    End If
+                Next
+                oldPosition = beltmotor.FeedBackPosition  'Record place wafer position
+                tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 500) : tmr.IsEnabled = True
+                systemSubState = 150
+
+
+            Case 150 'wait some time to place wafer
+                If tmr.IsTimerTicked Then
+                    systemSubState = 160
+                End If
+
+            Case 160 'motorY up
+                If motorY.drive(motorControl.motorCommandEnum.GO_POSITION, YaxisPosition.Up) =
+                motorControl.statusEnum.EXECUTION_END Then
+                    systemSubState = 170
+                End If
+
+            Case 170 'check if there is any NGbin and go to Buffer station
+                For index = 0 To 4
+                    If NGorOK(index) = False Then
+                        systemSubState = 180
+                        Exit For
+                    Else
+                        systemSubState = 0
+                    End If
+                Next
+
+            Case 180 'there is NG ; go to Buffer
+                motorX.drive(motorControl.motorCommandEnum.GO_POSITION, XaxisPosition.Place_Buffer)
+                systemSubState = 190
+
+            Case 190 'there is NG ; go to Buffer
+                If motorX.CommandEndStatus = motorControl.statusEnum.EXECUTION_END Then
+                    For index = 0 To 4
+                        writeBit(VacuumGeneratorCollection(index), False)
+                        TriggerPosition.DataCollection(index).IsPositionOccupied = False
+                    Next
+                    writeBit(vacuumBreaker, True)
+                    tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 500) : tmr.IsEnabled = True
+                    systemSubState = 200
+                End If
+
+            Case 200
+                If tmr.IsTimerTicked Then
+                    writeBit(vacuumBreaker, False)
+                    systemSubState = 0
+                End If
+
+
+        End Select
+        Return 0
+    End Function
+    Sub New()
+        '將自定義起始化函式加入 通用起始化引動清單
+        'jk note: 設定initialize中再加入initMappingAndSetup
+        '原本的initialze(在systemControlPrototype裡的New裡)已有設定包含三個function={initAddAllDrive,initLinkAlarm,initLinkMessenger}
+        '全部設定完後，必須在Assembly下call this instance.initialize
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf initMappingAndSetup))
+
+    End Sub
+    Function initMappingAndSetup() As Integer
+        With relatedFlags
+            .AddRange(controlFlag.FlagElementsArray)
+        End With
+
+        '本站主狀態函式設定
+        Me.systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIGNITE
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateEXECUTE
+        Me.systemMainState = systemStatesEnum.IGNITE
+        ap.PossibleResponse = alarmContextBase.responseWays.RETRY Or alarmContextBase.responseWays.IGNORE
+
+
+        AOIHandshakeCollection.ForEach(Sub(obj As loadHandshake)
+                                           obj.IsEnabled = True
+                                           obj.initialize()
+                                       End Sub)
+
+
+        Return 0
+    End Function
+
+#Region "alarm handler"
+    '------------------
+    'link alarm handler
+    '------------------
+    Sub alarmOccured(ByVal sender As Object, ByVal e As EventArgs) Handles CentralAlarmObject.alarmOccured, PauseBlock.InterceptedEvent 'link to PauseOccured
+        motorX.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+        motorY.drive(motorControl.motorCommandEnum.MOTION_PAUSE)
+
+    End Sub
+    Sub alarmresume(ByVal sender As Object, ByVal e As EventArgs) Handles CentralAlarmObject.alarmReleased, PauseBlock.UninterceptedEvent 'link to PauseRelease
+        motorX.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+        motorY.drive(motorControl.motorCommandEnum.MOTION_RESUME)
+    End Sub
+
+#End Region
+    Dim processStep, encoderOld, encoderNew As Integer
+    Property SpeedfromEncoder As Double
+    Dim processTmr As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 2)}
+    Protected Overrides Function process() As Integer
+
+        Select Case processStep
+            Case 0 'record old position and set timer
+                encoderOld = beltmotor.FeedBackPosition
+                processTmr.IsEnabled = True
+                processStep = 10
+
+            Case 10
+                If processTmr.IsTimerTicked Then
+                    processStep = 20
+                End If
+
+            Case 20 'record new postion and calculte beltSpeed form encoder
+                encoderNew = beltmotor.FeedBackPosition
+                SpeedfromEncoder = PosDist(encoderNew, encoderOld) / ppm / processTmr.TimeElapsed.TotalMinutes / 1000
+                processStep = 0
+        End Select
+
+        CentralAlarmObject.alarmHandling()
+        Me.PauseBlock.pauseHandling()
+        Return MyBase.process()
+    End Function
+    Function pauseSense() As Boolean
+        Dim condition As Boolean = controlFlag.readFlag(ControlEnum.PAUSE_PRESSED) Or
+        ((Not doorCheckService.IsAllConditionPassed Or Not airMonitor.IsAllConditionPassed) And doorCheckService.IsEnabled)
+
+        If (condition) Then
+            ''------------------------
+            ''   Reset pause counting
+            ''------------------------
+            'pauseButton.PulseCount = 0
+            'pauseButton.OnPulseWidth = TimeSpan.Zero
+        End If
+
+        Return condition
+    End Function
+    Function unpauseSense() As Boolean
+
+        Dim condition As Boolean = controlFlag.readFlag(ControlEnum.PAUSE_PRESSED) And
+        ((doorCheckService.IsAllConditionPassed And airMonitor.IsAllConditionPassed) Or Not doorCheckService.IsEnabled)
+
+        Return condition
+    End Function
+
+
+    Private Function PosDist(NowPos As Integer, RecordPos As Integer) As Integer
+        '原EncoderDist
+        '=== 解決encoder hun 振盪的問題 ======
+        'If Math.Abs(NowPos - RecordPos) < AmaxPosMax Then 'AmaxPosMax-AmaxPosMin=268,435,455 小於 Integer的最大值(2,147,483,647)，故不會造成溢位
+        If NowPos >= RecordPos Then
+            Return NowPos - RecordPos
+        Else
+            Return (NowPos - AmaxPosMin) + (AmaxPosMax - RecordPos)
+        End If
+
+    End Function
+    Public Overrides Function close() As Integer
+        AOIHandshakeCollection.ForEach(Sub(obj As loadHandshake)
+                                           obj.close()
+                                       End Sub)
+        Return MyBase.close()
+    End Function
+End Class

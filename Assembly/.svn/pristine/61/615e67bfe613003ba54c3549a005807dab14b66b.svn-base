@@ -1,0 +1,25 @@
+﻿Imports Automation
+
+Public Class userControlFrameManager2
+    Sub loadControl() Handles MyBase.Load
+        For Each item As ComboBox In {ComboBoxFrom,
+                                      ComboBoxTo}
+            utilitiesUI.loadComboBoxItemByEnum(item, GetType(framesDefinition))
+        Next
+    End Sub
+
+    Sub comboBoxItemChanged() Handles ComboBoxFrom.SelectionChangeCommitted,
+        ComboBoxTo.SelectionChangeCommitted
+
+        Dim fetched = frames.Instance.Elementray(ComboBoxFrom.SelectedValue,
+                                   ComboBoxTo.SelectedValue)
+
+        If fetched IsNot Nothing Then
+            PropertyGridManager.SelectedObject = fetched
+            TextBoxMessage.Text = fetched.ToString
+        Else
+            TextBoxMessage.Text = "Found no Transformation"
+        End If
+
+    End Sub
+End Class

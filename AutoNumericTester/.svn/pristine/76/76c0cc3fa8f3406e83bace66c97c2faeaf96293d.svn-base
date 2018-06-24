@@ -1,0 +1,232 @@
+﻿Imports Microsoft.VisualStudio.TestTools.UnitTesting
+Imports AutoNumeric
+Imports MathNet.Numerics.LinearAlgebra
+Imports AutoNumericTester.common
+Imports System.Text
+
+
+Namespace AutoNumeric.Tests
+
+    <TestClass()> Public Class measuredDataPairTests
+
+        Public Enum frames
+            NOMINAL
+            REAL
+        End Enum
+
+        Dim rnd As Random = New Random(Now.Millisecond)
+        Dim noisePercentage As Double = 0.001
+
+        <TestMethod()> Public Sub NewTest()
+
+            Dim dataPair = New measuredDataPair(CreateVector.Dense(Of Double)(3),
+                                                CreateVector.Dense(Of Double)(3),
+                                                 utilities.selectionEnums.X +
+                                                  utilities.selectionEnums.Y +
+                                                  utilities.selectionEnums.Z)
+
+            'no error
+            Assert.IsTrue(dataPair.OriginalErrorPosition.L2Norm = 0)
+        End Sub
+
+        <TestMethod()> Public Sub errorGainTest()
+            Dim nomialPosition As PositionVector = New PositionVector(CreateVector.Random(Of Double)(3),
+                                                                      frames.NOMINAL)
+
+            'Dim errorMatrix As errorHtm = New errorHtm(frames.NOMINAL,
+            '                                           frames.REAL)
+
+
+
+            'errorMatrix.ErrorVector = CreateVector.Random(Of Double)(6)
+
+            'Dim realPosition As PositionVector = errorMatrix * nomialPosition
+
+            'Dim dataPair = New measuredDataPair(nomialPosition.RawValue,
+            '                                    realPosition.RawValue,
+            '                                     utilities.selectionEnums.X +
+            '                                     utilities.selectionEnums.Y +
+            '                                     utilities.selectionEnums.Z)
+
+            'Dim errorPositionRestore = dataPair.ErrorGain * errorMatrix.ErrorVector
+            'Dim errorPositionDifference = errorPositionRestore - dataPair.ErrorPosition
+            ''no error
+            'Assert.IsTrue(errorPositionDifference.ForAll(AddressOf isInTolerance),
+            '              String.Format("given {0}; restore {1}",
+            '                            dataPair.ErrorPosition.ToVectorString,
+            '                            errorPositionRestore.ToVectorString))
+        End Sub
+
+        '<TestMethod()> Public Sub fitErrorVectorTest()
+        '    common.tolerance = 0.00000001
+
+        '    'error matrix initialize
+        '    Dim errorMatrix As errorHtm = New errorHtm(frames.NOMINAL,
+        '                                               frames.REAL)
+        '    Dim errorVector = CreateVector.Random(Of Double)([Enum].GetValues(GetType(errorVectorIndexesEnum)).Length)
+        '    errorMatrix.ErrorVector = errorVector
+
+        '    Dim nomialCenter As PositionVector = New PositionVector(CreateVector.Random(Of Double)(3),
+        '                                                            frames.NOMINAL)
+        '    Dim nomialPosition As PositionVector = New PositionVector(frames.NOMINAL)
+        '    Dim nomialPositions As List(Of PositionVector) = New List(Of PositionVector)
+
+        '    Dim realPositions As List(Of PositionVector) = New List(Of PositionVector)
+        '    Dim realPositionsCalculated As List(Of PositionVector) = New List(Of PositionVector)
+        '    Dim realPositionDifference As List(Of PositionVector) = New List(Of PositionVector)
+
+        '    Dim radius As Double = 100
+        '    Dim divides As Integer = 20
+        '    Dim radianIncrement As Double = ((360 / divides) / 180) * Math.PI
+        '    Dim radianAccumulation As Double = 0
+
+        '    Dim dataPairs As List(Of measuredDataPair) = New List(Of measuredDataPair)
+        '    'generate nominal positions around a circle
+        '    For index = 0 To divides - 1
+        '        nomialPosition = nomialCenter.Clone
+        '        With nomialPosition
+        '            .X = .X + radius * Math.Cos(radianAccumulation)
+        '            .Y = .Y + radius * Math.Sin(radianAccumulation)
+        '            .Z = .Z + radius * Math.Sin(radianAccumulation)
+        '        End With
+
+        '        Dim realPosition As PositionVector = errorMatrix * nomialPosition
+
+        '        nomialPositions.Add(nomialPosition.Clone)
+        '        realPositions.Add(realPosition.Clone)
+        '        'With realPosition
+        '        '    'added some noise
+        '        '    Dim sign As Double = (rnd.Next(0, 2) - 0.5) * 2
+        '        '    .X += ((.X) * noisePercentage * rnd.NextDouble * sign)
+        '        '    sign = (rnd.Next(0, 2) - 0.5) * 2
+        '        '    .Y += ((.Y) * noisePercentage * rnd.NextDouble * sign)
+        '        '    sign = (rnd.Next(0, 2) - 0.5) * 2
+        '        '    .Z += ((.Z) * noisePercentage * rnd.NextDouble * sign)
+        '        'End With
+
+        '        dataPairs.Add(New measuredDataPair(nomialPosition.RawValue.Clone,
+        '                                           realPosition.RawValue.Clone,
+        '                                            utilities.selectionEnums.X + utilities.selectionEnums.Y + utilities.selectionEnums.Z))
+
+        '        radianAccumulation += radianIncrement
+        '    Next
+
+        '    Dim calculatedErrorVector As Vector(Of Double) = measuredDataPair.fitErrorVector(dataPairs)
+
+        '    Dim calculatedErrorMatrix As errorHtm = New errorHtm(frames.NOMINAL,
+        '                                                         frames.REAL) With {.ErrorVector = calculatedErrorVector}
+
+        '    'calculated
+        '    For index = 0 To nomialPositions.Count - 1
+        '        realPositionsCalculated.Add(calculatedErrorMatrix * nomialPositions(index))
+
+        '    Next
+        '    For index = 0 To realPositions.Count - 1
+        '        realPositionDifference.Add(realPositions(index) - realPositionsCalculated(index))
+        '    Next
+
+
+        '    Dim errorVectorDifference = calculatedErrorVector - errorMatrix.ErrorVector
+
+        '    Trace.WriteLine(errorVectorDifference.ToVectorString)
+
+
+        '    Dim sb As StringBuilder = New StringBuilder
+        '    For index = 0 To realPositionDifference.Count - 1
+        '        sb.AppendLine(String.Format("{0},{1},{2}",
+        '                                    realPositions(index).RawValue.ToVectorString.Replace(vbCrLf, vbTab),
+        '                                    realPositionsCalculated(index).RawValue.ToVectorString.Replace(vbCrLf, vbTab),
+        '                                    realPositionDifference(index).RawValue.ToVectorString.Replace(vbCrLf, vbTab)))
+        '    Next
+        '    Trace.WriteLine(sb.ToString)
+
+
+        '    Assert.IsTrue(realPositionDifference.TrueForAll(Function(__pos As PositionVector)
+        '                                                        With __pos
+        '                                                            Return isInTolerance(.X) And
+        '                                                                isInTolerance(.Y)
+        '                                                        End With
+        '                                                    End Function))
+
+        'End Sub
+
+        <TestMethod()> Public Sub fitTransformationXY()
+            common.tolerance = 0.00000001
+
+            'error matrix initialize
+            Dim errorMatrix As eulerHtmTR = New eulerHtmTR(frames.NOMINAL,
+                                                           frames.REAL)
+            Dim errorVector = CreateVector.Random(Of Double)([Enum].GetValues(GetType(axisEntityEnum)).Length)
+            errorMatrix.ControlVector = errorVector
+
+            Dim nomialCenter As PositionVector = New PositionVector(CreateVector.Random(Of Double)(3),
+                                                                    frames.NOMINAL)
+
+            Dim nomialPosition As PositionVector = New PositionVector(frames.NOMINAL)
+            Dim nomialPositions As List(Of PositionVector) = New List(Of PositionVector)
+
+            Dim realPositions As List(Of PositionVector) = New List(Of PositionVector)
+            Dim realPositionsCalculated As List(Of PositionVector) = New List(Of PositionVector)
+            Dim realPositionDifference As List(Of PositionVector) = New List(Of PositionVector)
+
+            Dim radius As Double = 100
+            Dim divides As Integer = 20
+            Dim radianIncrement As Double = ((360 / divides) / 180) * Math.PI
+            Dim radianAccumulation As Double = 0
+
+            Dim dataPairs As List(Of measuredDataPair) = New List(Of measuredDataPair)
+            'generate nominal positions around a circle
+            For index = 0 To divides - 1
+                nomialPosition = nomialCenter.Clone
+                With nomialPosition
+                    .X = .X + radius * Math.Cos(radianAccumulation)
+                    .Y = .Y + radius * Math.Sin(radianAccumulation)
+                    .Z = .Z + radius * Math.Sin(radianAccumulation)
+                End With
+
+                Dim realPosition As PositionVector = errorMatrix * nomialPosition
+
+                nomialPositions.Add(nomialPosition.Clone)
+                realPositions.Add(realPosition.Clone)
+                'With realPosition
+                '    'added some noise
+                '    Dim sign As Double = (rnd.Next(0, 2) - 0.5) * 2
+                '    .X += ((.X) * noisePercentage * rnd.NextDouble * sign)
+                '    sign = (rnd.Next(0, 2) - 0.5) * 2
+                '    .Y += ((.Y) * noisePercentage * rnd.NextDouble * sign)
+                '    sign = (rnd.Next(0, 2) - 0.5) * 2
+                '    .Z += ((.Z) * noisePercentage * rnd.NextDouble * sign)
+                'End With
+
+                dataPairs.Add(New measuredDataPair(nomialPosition.RawValue.Clone,
+                                                   realPosition.RawValue.Clone,
+                                                    utilities.selectionEnums.X Or
+                                                    utilities.selectionEnums.Y))
+
+                radianAccumulation += radianIncrement
+            Next
+
+            Dim calculatedErrorMatrix As htmEdgeElementary = measuredDataPair.fitTransformation(dataPairs)
+
+            Dim __compare As List(Of measuredDataPair) = New List(Of measuredDataPair)
+            For index = 0 To nomialPositions.Count - 1
+                __compare.Add(New measuredDataPair((calculatedErrorMatrix * nomialPositions(index)).RawValue,
+                                                   realPositions(index).RawValue,
+                                                    utilities.selectionEnums.X Or
+                                                     utilities.selectionEnums.Y))
+            Next
+
+            Trace.Write(measuredDataPair.pairsOutput(__compare))
+            Trace.Write(calculatedErrorMatrix.RawValue)
+            Trace.Write(errorMatrix.RawValue)
+
+            Assert.IsTrue(__compare.TrueForAll(Function(__data As measuredDataPair) isInTolerance(__data.OriginalErrorPosition.L2Norm)))
+        End Sub
+
+
+    End Class
+
+
+End Namespace
+
+

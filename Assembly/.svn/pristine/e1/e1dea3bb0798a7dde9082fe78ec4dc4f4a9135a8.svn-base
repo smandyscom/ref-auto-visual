@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<wafer_data xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <BinID>20</BinID>
+  <portID>PT20</portID>
+  <waferidlist />
+  <BoxId>BOX20</BoxId>
+</wafer_data>

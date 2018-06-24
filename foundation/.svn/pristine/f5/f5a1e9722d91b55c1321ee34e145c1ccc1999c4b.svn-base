@@ -1,0 +1,32 @@
+﻿Imports Automation.Components.CommandStateMachine
+
+Public Class userControlLifter
+    Property lifterReference As lifterControl
+
+    Public Overrides Sub Refresh()
+        TextBoxStatus.Text = lifterReference.CommandEndStatus.ToString()
+        TextBoxCommandInExecute.Text = lifterReference.ExecuteStatus.ToString()
+        LabelCurrentIndex.Text = lifterReference.CurrentSlot.ToString()
+        LabelElapsedTime.Text = lifterReference.ElapsedTime.ToString()
+        MyBase.Refresh()
+    End Sub
+
+    Private Sub ClickDrive(ByVal sender As Object, ByVal e As EventArgs) Handles ButtonDriveNext.Click, ButtonDriveUnload.Click, ButtonDriveNextUnload.Click, ButtonDriveSynchron.Click, ButtonDriveStart.Click
+        Select Case CType(sender, Control).Name
+            Case "ButtonDriveStart"
+                lifterReference.drive(motorControl.motorCommandEnum.GO_POSITION, lifterControl.lifterPositionsEnum.START)
+            Case "ButtonDriveNext"
+                lifterReference.drive(lifterControl.lifterCommandEnum.GO_NEXT_LOAD)
+            Case "ButtonDriveUnload"
+                lifterReference.drive(lifterControl.lifterCommandEnum.EJECT)
+            Case "ButtonDriveNextUnload"
+                lifterReference.drive(lifterControl.lifterCommandEnum.GO_NEXT_UNLOAD)
+            Case "ButtonDriveSynchron"
+                CType(lifterReference, syncLifterControl).synchronInitializing()
+                CType(lifterReference, syncLifterControl).drive(syncLifterControl.synchronTableCommandEnum.SYNCHRON)
+            Case Else
+        End Select
+
+    End Sub
+
+End Class

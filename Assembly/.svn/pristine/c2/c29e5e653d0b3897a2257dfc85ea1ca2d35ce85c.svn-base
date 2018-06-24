@@ -1,0 +1,135 @@
+﻿Imports MathNet.Numerics.LinearAlgebra
+Imports System.Xml.Serialization
+Imports System.IO
+Imports AutoNumeric
+Imports FA.framesDefinition
+''' <summary>
+''' List all Frame Tag
+''' </summary>
+''' <remarks></remarks>
+Public Enum framesDefinition As Byte
+    R = 0
+    C1
+    C2
+    C3
+    C1REAL
+    C2REAL
+    C3REAL
+    S0
+    S
+    Y0
+    Y0REAL
+    C4
+    L
+    LREAL
+End Enum
+
+
+''' <summary>
+''' Depict machine frame structure
+''' </summary>
+''' <remarks></remarks>
+Public Class frames
+    Inherits kinematicGraphBase
+    Implements IDisposable
+
+
+    ''' <summary>
+    ''' Given item , solve the nominal axis value
+    ''' </summary>
+    ''' <param name="rItem"></param>
+    ''' <param name="yItem"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function solveAbsAxAy(rItem As PositionVector, yItem As framesDefinition) As Object
+        Select Case yItem
+            Case LREAL
+            Case C4
+            Case Else
+                'not available Y item
+                Throw New InvalidDataException
+        End Select
+    End Function
+    ''' <summary>
+    ''' Given item , solve the nominal axis value
+    ''' </summary>
+    ''' <param name="rItem"></param>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function solveAbsAx(rItem As PositionVector) As Double
+        Dim T_s0_r As s0Htm = CType(Me.Elementray(S0, R), s0Htm)
+        'fetch the zero-s0Htm
+        'calculate the Ax value(ABS) , rItem minus zero-S0Htm*zero-PositionVector , take the part
+    End Function
+
+    Function initialize() As Integer
+
+        're-construct chain from persistance
+        With Me.__htmEdgeList
+            .Add(New htmEdgeElementary(C1, R))
+            .Add(New htmEdgeElementary(C2, R))
+            .Add(New htmEdgeElementary(C3, R))
+
+            .Add(New errorHtm(C1REAL, C1))
+            .Add(New errorHtm(C2REAL, C2))
+            .Add(New errorHtm(C3REAL, C3))
+
+            .Add(New htmEdgeElementary(S0, R))
+            .Add(New eulerHtmTR(S, S0))
+
+            .Add(New htmEdgeElementary(Y0, S0))
+            .Add(New errorHtm(Y0REAL, Y0))
+
+            .Add(New htmEdgeElementary(C4, Y0REAL))
+
+            .Add(New htmEdgeElementary(L, C4))
+            .Add(New errorHtm(LREAL, L))
+
+            Dim __listNeedReload = .FindAll(Function(__htm As htmEdgeElementary) __htm.GetType.Equals(GetType(htmEdgeElementary)))
+            __listNeedReload.ForEach(Sub(__htm As htmEdgeElementary) __htm.load())
+        End With
+
+
+        'TODO for those pure htemEdgeElementray , do load
+
+
+        Return 0
+    End Function
+
+
+#Region "IDisposable Support"
+    Private disposedValue As Boolean ' To detect redundant calls
+
+    ' IDisposable
+    Protected Overridable Sub Dispose(disposing As Boolean)
+        If Not Me.disposedValue Then
+            If disposing Then
+                ' TODO: dispose managed state (managed objects).
+            End If
+
+            ' TODO: free unmanaged resources (unmanaged objects) and override Finalize() below.
+            ' TODO: set large fields to null.
+        End If
+
+        'TODO , for those marked persistance , do save()
+
+        Me.disposedValue = True
+    End Sub
+
+    ' TODO: override Finalize() only if Dispose(ByVal disposing As Boolean) above has code to free unmanaged resources.
+    Protected Overrides Sub Finalize()
+        ' Do not change this code.  Put cleanup code in Dispose(ByVal disposing As Boolean) above.
+        Dispose(False)
+        MyBase.Finalize()
+    End Sub
+
+    ' This code added by Visual Basic to correctly implement the disposable pattern.
+    Public Sub Dispose() Implements IDisposable.Dispose
+        ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
+        Dispose(True)
+        GC.SuppressFinalize(Me)
+    End Sub
+#End Region
+
+End Class
+

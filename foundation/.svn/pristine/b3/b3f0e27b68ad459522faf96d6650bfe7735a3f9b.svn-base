@@ -1,0 +1,90 @@
+﻿Imports Automation
+Imports Automation.Components.Services
+
+''' <summary>
+''' for ASA-04-191
+''' </summary>
+''' <remarks></remarks>
+Public Class clsWaferBrokenCheckV2
+    Inherits systemControlPrototype
+#Region "External Data declare"
+    Dim tmr As singleTimer = New singleTimer With {.TimerGoal = New TimeSpan(0, 0, 5)}
+    Property targetPositionInfo As Func(Of shiftDataPackBase) '破片所專注的位置
+    Public Property isNg As New flagController(Of interlockedFlag)
+    Public Event NgFound(ByVal sender As Object, ByVal e As EventArgs)
+#End Region
+#Region "Device declare"
+    Property SpCrack1 As sensorControl = New sensorControl
+    Property SpCrack2 As sensorControl = New sensorControl
+    Property SpCrack3 As sensorControl = New sensorControl
+    Property SpCrack4 As sensorControl = New sensorControl
+    Property SpOccupied As sensorControl = New sensorControl
+#End Region
+
+    Enum stateExcuteEnum
+        _0
+        _10
+        _20
+        _30
+        _40
+        _100
+        _110
+        _120
+        _300
+        _200
+    End Enum
+    Protected Function stateIgnite() As Integer '直接跳至執行階段
+        systemMainState = systemStatesEnum.EXECUTE
+        Return 0
+    End Function
+    Protected Function stateExecute() As Integer
+        Select Case CType(systemSubState, stateExcuteEnum)
+            Case stateExcuteEnum._0
+                If targetPositionInfo.Invoke.ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED) = True Then 'action
+                    systemSubState = stateExcuteEnum._10
+                End If
+            Case stateExcuteEnum._10
+                If targetPositionInfo.Invoke.IsPositionOccupied = True Then
+                    systemSubState = stateExcuteEnum._20
+                Else
+                    systemSubState = stateExcuteEnum._200 'there is no wafer,  clear action flag directly
+                End If
+            Case stateExcuteEnum._20
+                'wait lock flag off
+                'If isNg.viewFlag(FlagsEnum.LOCK) = False Then
+                tmr.IsEnabled = True : tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, 300)
+                systemSubState = stateExcuteEnum._30
+                'End If
+            Case stateExcuteEnum._30
+                If SpCrack1.IsSensorCovered = False OrElse SpCrack2.IsSensorCovered = False OrElse
+                    SpCrack3.IsSensorCovered = False OrElse SpCrack4.IsSensorCovered = False Then
+                    If tmr.IsTimerTicked = True Then
+                        'Flags.setFlag(FlagsEnum.NG)
+                        isNg.setFlag(interlockedFlag.POSITION_OCCUPIED)
+                        systemSubState = stateExcuteEnum._100
+                    End If
+                Else
+                    systemSubState = stateExcuteEnum._200
+                End If
+            Case stateExcuteEnum._100
+                RaiseEvent NgFound(Me, Nothing)
+                systemSubState = stateExcuteEnum._200
+            Case stateExcuteEnum._200 'finish
+                targetPositionInfo.Invoke.ModuleAction.writeFlag(interlockedFlag.POSITION_OCCUPIED, False)
+                systemSubState = stateExcuteEnum._0
+        End Select
+        Return 0
+    End Function
+
+    Function initMappingAndSetup() As Integer
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        systemMainState = systemStatesEnum.IGNITE
+        initEnableAllDrives() 'enable 此class裡所有的driveBase
+        Return 0
+    End Function
+
+    Public Sub New()
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf Me.initMappingAndSetup))
+    End Sub
+End Class

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dmCalibrationSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <C1ImageProcess>
+    <LightDensity>1</LightDensity>
+    <LightChannel>0</LightChannel>
+    <VppFilename>C1CHUCK.vpp</VppFilename>
+  </C1ImageProcess>
+  <C2ImageProcess>
+    <LightDensity>1</LightDensity>
+    <LightChannel>0</LightChannel>
+    <VppFilename>C2CHUCK.vpp</VppFilename>
+  </C2ImageProcess>
+  <C4ImageProcess>
+    <LightDensity>1</LightDensity>
+    <LightChannel>0</LightChannel>
+    <VppFilename>C4CHUCK.vpp</VppFilename>
+  </C4ImageProcess>
+  <C1RouteProcess>
+    <SearchDirection>X</SearchDirection>
+    <ShiftDirection>Y</ShiftDirection>
+    <SearchDepth>-2</SearchDepth>
+    <ShiftPitch>0.05</ShiftPitch>
+    <ShiftCount>8</ShiftCount>
+    <Speed>1</Speed>
+    <StartSpeed>0.1</StartSpeed>
+    <AccerlerationTime>0.05</AccerlerationTime>
+    <DecerlerationTime>0.05</DecerlerationTime>
+  </C1RouteProcess>
+  <C2RouteProcess>
+    <SearchDirection>Y</SearchDirection>
+    <ShiftDirection>X</ShiftDirection>
+    <SearchDepth>-1</SearchDepth>
+    <ShiftPitch>0.05</ShiftPitch>
+    <ShiftCount>8</ShiftCount>
+    <Speed>1</Speed>
+    <StartSpeed>0.1</StartSpeed>
+    <AccerlerationTime>0.05</AccerlerationTime>
+    <DecerlerationTime>0.05</DecerlerationTime>
+  </C2RouteProcess>
+</dmCalibrationSetting>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<clsApplyRule>
+  <ruleCollection ClassName="other" IsEnabled="true" Color="FF32CD32">
+    <Bins>5</Bins>
+  </ruleCollection>
+</clsApplyRule>

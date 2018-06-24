@@ -1,0 +1,8 @@
+//  System Event Definition,,
+// Name,ID,Definition
+CntRcvd,101,Carrier loading
+CntAccepted,102,Carrier was accepted
+CntRejected,103,Carrier was rejected 
+MatMeasure ,104,Wafer was measured 
+CntRmvd,105,Carrier was removed 
+StateChanged,205,Equipment state changed

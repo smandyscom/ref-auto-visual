@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s0Htm xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <MatrixText>-1,0,0,360.8
+0,1,0,163.5
+0,0,-1,120.002
+0,0,0,1</MatrixText>
+  <ZeroOffset>231</ZeroOffset>
+</s0Htm>

@@ -1,0 +1,16 @@
+Enum	outputAddress As ULong
+	DUMMY_OUT								=	8		'	空點
+	EN								=	0		'	
+	LSR_DR1_DIS								=	1		'	
+	LSR_DR2_DIS								=	2		'	
+	GRIP_VAC								=	16		'	夾手吸附
+	GRIP_CLS								=	17		'	夾手開
+	GRIP_OPEN								=	18		'	夾手關
+	DISP								=	19		'	塗膠
+	SYNRINGE								=	20		'	膠加壓
+	LP_PAUSE								=	24		'	
+	LP_R								=	25		'	
+	LP_G								=	26		'	
+	LP_Y								=	27		'	
+	BUZZER								=	28		'	
+End Enum

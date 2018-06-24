@@ -1,0 +1,80 @@
+﻿Imports AutoNumeric
+Imports System.Xml.Serialization
+Imports Automation
+Imports System.IO
+
+''' <summary>
+''' Singleton
+''' S0->R
+''' </summary>
+''' <remarks></remarks>
+<Serializable()>
+Public Class s0Htm
+    Inherits htmEdgeElementary
+
+    ''' <summary>
+    ''' The Ax Control Value From Zero Point
+    ''' Also the motorX command Value
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    <XmlIgnore()>
+    Property AxFromHome As Double
+        Get
+            'update axfromHome
+            __axFromHome = __matrixCore(0, 3) - HomeOffset
+            Return __axFromHome
+        End Get
+        Set(value As Double)
+            __axFromHome = value
+            'update current status
+            __matrixCore(0, 3) = __axFromHome + HomeOffset
+        End Set
+    End Property
+    Dim __axFromHome As Double = 0
+
+    ''' <summary>
+    ''' Need to be stored
+    ''' The home position from reference frame
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Property HomeOffset As Double = 0
+
+    Protected Sub New()
+        MyBase.New(framesDefinition.S0,
+                   framesDefinition.R)
+    End Sub
+
+    Shared __reference As s0Htm = New s0Htm
+
+    Public Shared ReadOnly Property Instance As s0Htm
+        Get
+            Return __reference
+        End Get
+    End Property
+
+    'TODO , load zero offset for all axes
+    'TODO , override save() , always save zero value
+    '#Region "persistance"
+    '    Protected ReadOnly Property ExtensionFile As String
+    '        Get
+    '            Return MyBase.Filename & ".xml"
+    '        End Get
+    '    End Property
+    '    Public Overrides Sub Load(filename As String)
+    '        MyBase.Load(filename)
+    '        Dim tempReference As s0Htm = Nothing
+    '        mdlXmlSaveLoad.OpenXmlFile(tempReference, ExtensionFile)
+    '    End Sub
+    '    Public Overrides Sub Save()
+    '        MyBase.Save()
+    '        Dim __list As List(Of Type) = New List(Of Type) From {GetType(htmEdgeElementary)}
+    '        Using __sw As StreamWriter = New StreamWriter(ExtensionFile)
+    '            'Automation.utilities.getSerializer(Me.GetType, __list).Serialize(__sw, Me)
+    '        End Using
+    '    End Sub
+    '#End Region
+End Class

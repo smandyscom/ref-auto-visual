@@ -1,0 +1,120 @@
+﻿Imports System.Runtime.CompilerServices
+
+<Assembly: InternalsVisibleTo("AutoNumericTester")> 
+
+
+''' <summary>
+''' Offer basic facilities to build/traverse a kinematic graph
+''' </summary>
+''' <remarks></remarks>
+Public Class kinematicGraphBase
+
+    ''' <summary>
+    ''' Given source frame(from) and destionation frame(to) , would return a 
+    ''' consequence transformation
+    ''' </summary>
+    ''' <param name="__from"></param>
+    ''' <param name="__to"></param>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property Transformation(__from As [Enum], __to As [Enum]) As htmEdgeBase
+        Get
+            Return New htmEdgeComposed(htmTraverse(__from, __to),
+                                       __from,
+                                       __to)
+        End Get
+    End Property
+    ''' <summary>
+    ''' Used for query elementray 
+    ''' </summary>
+    ''' <param name="__from"></param>
+    ''' <param name="__to"></param>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property Elementray(__from As [Enum], __to As [Enum]) As htmEdgeElementary
+        Get
+            Return __htmEdgeList.Find(Function(__htm As htmEdgeBase)
+                                          Return __htm.GetType.IsSubclassOf(GetType(htmEdgeElementary)) And
+                                              __htm.From.Equals(__from) And
+                                              __htm.To__.Equals(__to)
+                                      End Function)
+        End Get
+    End Property
+
+
+    ReadOnly Property HtmEdgeList As List(Of htmEdgeBase)
+        Get
+            Return __htmEdgeList
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Used to store original HTMs
+    ''' </summary>
+    ''' <remarks></remarks>
+    Protected Friend __htmEdgeList As List(Of htmEdgeBase) = New List(Of htmEdgeBase)
+
+    ''' <summary>
+    ''' The Traverse method to find a htm from a frame to another
+    '''  a series of htms , zero-index indicate 'destination'
+    ''' Treated as non-direction graph
+    ''' </summary>
+    ''' <param name="start"></param>
+    ''' <param name="destination"></param>
+    ''' <returns> the path traversed </returns>
+    ''' <remarks></remarks>
+    Protected Friend Function htmTraverse(start As [Enum], destination As [Enum],
+                         Optional remainedEdge As List(Of htmEdgeBase) = Nothing) As List(Of htmEdgeBase)
+        '1. find all candinates
+        '2. go further traverse each candinates
+        '3. do nessary inversion of htm
+
+        If remainedEdge Is Nothing Then
+            remainedEdge = __htmEdgeList
+        End If
+
+        Dim entries As List(Of htmEdgeBase) =
+            remainedEdge.FindAll(Function(__htm As htmEdgeBase) __htm.From.Equals(start) Or __htm.To__.Equals(start))
+
+        'if candinates's __to is the tranverse destination , finish traversing
+        Dim __destination As htmEdgeBase = entries.Find(Function(__htm As htmEdgeBase) __htm.To__.Equals(destination) Or __htm.From.Equals(destination))
+
+        If __destination IsNot Nothing Then
+            Return New List(Of htmEdgeBase) From {__destination}
+        Else
+            Dim __subPath As List(Of htmEdgeBase) = New List(Of htmEdgeBase)
+
+            'if not , turns candinates's __to as next from , do further traversing
+            For Each __htm As htmEdgeBase In entries
+
+                'organized remained edge
+                Dim __remainedEdge As List(Of htmEdgeBase) = New List(Of htmEdgeBase)
+                __remainedEdge.AddRange(remainedEdge.ToArray)
+                __remainedEdge.Remove(__htm)
+
+                Dim furtherPath As List(Of htmEdgeBase) =
+                    htmTraverse(__htm.To__, destination, __remainedEdge)
+
+                If furtherPath IsNot Nothing Then
+                    __subPath.AddRange(furtherPath)
+                    __subPath.Add(__htm)
+                    Return __subPath
+                Else
+                    '-------------------------
+                    ' no further path
+                    'do neighbor traversing
+                    '-------------------------
+                End If
+            Next
+        End If
+
+        'no candinates
+        'no further path for all candinates
+        Return Nothing
+
+    End Function
+
+
+End Class

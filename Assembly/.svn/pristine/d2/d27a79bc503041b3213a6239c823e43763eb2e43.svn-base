@@ -1,0 +1,23 @@
+// Define Formated Process Program
+// CCODE: [command code name], command Code(CCODE), process parameter number , Comment
+//  PParmName, Type, Min.Value, Max.Value, Comment
+
+CCODE: [RecipeCommon], 98, 2 , Comment 1
+ RecipeNo, UINT_1,       1,        100, PPARM 11 def
+ Comment,   ASCII,     N/A,        N/A, PPARM 12 def
+
+CCODE: [CCodeID2], 1, 2 , Comment 2
+ WindSet,  UINT_1,       1,        100, PPARM 13 def
+ WaterSet, UINT_1,       1,        100, PPARM 14 def
+
+CCODE: [CCodeID3], 2, 9 , Comment 3
+ PParmName1, UINT_1,       0,         10, PPARM 1 def
+ PParmName2, UINT_2,       1,      10000, PPARM 2 def
+ PParmName3, UINT_4,       1, 1000000000, PPARM 4 def
+ PParmName4, INT_1,     -100,        100, PPARM 5 def
+ PParmName5, INT_2,    -1000,       1000, PPARM 6 def
+ PParmName6, INT_4, -1000000,    1000000, PPARM 7 def
+ PParmName7, FT_4,       0.1,       10.9, PPARM 8 def
+ PParmName8, BOOLEAN,    N/A,        N/A, PPARM 9 def
+ PParmName9, ASCII,      N/A,        N/A, PPARM 10 def
+

@@ -1,0 +1,334 @@
+﻿Option Strict Off
+Imports Automation
+Imports Automation.Components.Services
+Imports Automation.mainIOHardware
+Imports Automation.Components
+Imports System.ComponentModel
+Imports System.Net
+Imports System.IO.Ports
+Imports System.Text.RegularExpressions
+Imports SmarPodAssembly
+Imports Automation.Components.CommandStateMachine
+
+
+Public Enum controlUnitsEnum As Integer
+    X = 0
+    Y
+    Z
+    S
+End Enum
+
+
+''' <summary>
+''' Singleton
+''' </summary>
+''' <remarks></remarks>
+Public Class Assembly
+    Inherits assemblyArch
+
+    ''' <summary>
+    ''' Used to query status
+    ''' </summary>
+    ''' <param name="unit"></param>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property CommandEndStatus(unit As controlUnitsEnum) As IDrivable.endStatus
+        Get
+            Return controlUnits(unit).CommandEndStatus
+        End Get
+    End Property
+    ''' <summary>
+    ''' 
+    ''' </summary>
+    ''' <value></value>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    ReadOnly Property IsXYZSettled As Boolean
+        Get
+            Return xyzUnits.TrueForAll(Function(motor As motorControlDrivable) motor.CommandEndStatus <> IDrivable.endStatus.EXECUTING Or
+                                           motor.CommandInExecute = motorControl.motorCommandEnum.NONE)
+        End Get
+    End Property
+
+    Public WithEvents genericSettings As settingBlock = New settingBlock
+    Public operationSignals As flagController(Of operationSignalsEnum) = New flagController(Of operationSignalsEnum)
+
+    Sub settingChanged(ByVal sender As settingBlock, ByVal e As EventArgs) Handles genericSettings.PropertyChanged
+    End Sub
+
+#Region "sub systems"
+    Dim hmiPauseButton As sensorControl = New sensorControl() With {.InputBit = inputAddress.PB_PAUSE,
+                                                                    .IsEnabled = True}
+    Dim hmiPauseLight As flipService = New flipService() With {.OutputBit = outputAddress.LP_PAUSE,
+                                                               .FlipGoal = New TimeSpan(0, 0, 0, 0, 500)}
+    Dim __timer As singleTimer = New singleTimer
+
+    Dim __omnicureSerialPort As IO.Ports.SerialPort = New IO.Ports.SerialPort
+
+    '--------------------------
+    ' Coordinates control units
+    '--------------------------
+    Dim xMotorControl As motorControlDrivable = New motorControlDrivable With {.IsEnabled = True}
+    Dim yMotorControl As motorControlDrivable = New motorControlDrivable With {.IsEnabled = True}
+    Dim zMotorControl As motorControlDrivable = New motorControlDrivable With {.IsEnabled = True}
+    Dim __smarPodControl As smarPodControl = New smarPodControl With {.IsEnabled = True}
+
+
+    Dim xyzUnits As List(Of motorControlDrivable) = New List(Of motorControlDrivable) From {xMotorControl,
+                                                                                            yMotorControl,
+                                                                                            zMotorControl}
+    Dim controlUnits As Dictionary(Of controlUnitsEnum, IDrivable) = New Dictionary(Of controlUnitsEnum, IDrivable)
+#End Region
+
+    Function initMappingAndSetup() As Integer
+
+        'state function configuration
+        systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIgnite
+        systemMainStateFunctions(systemStatesEnum.IDLE) = AddressOf stateIdle
+        systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute 'Function() (0)
+        systemMainState = systemStatesEnum.IGNITE
+
+        'mount logger
+        basicLogger.MessengerReference = CentralMessenger
+
+        'door interlock , Hsien , 2015.05.14
+        messageTimer.TimerGoal = New TimeSpan(0, 0, 1)
+        With doorInterlock.SensorsNeedToCheck
+        End With
+
+        buzzer.OutputBit = outputAddress.BUZZER
+        redTowerLight.OutputBit = outputAddress.LP_R
+        yellowTowerLight.OutputBit = outputAddress.LP_Y
+        greenTowerLight.OutputBit = outputAddress.LP_G
+
+        pauseButtons.AddRange({hmiPauseButton})
+        pauseLights.AddRange({hmiPauseLight})
+
+
+        With xMotorControl
+            .MotorIndex = motorAddress.MsX
+        End With
+        With yMotorControl
+            .MotorIndex = motorAddress.MsY
+        End With
+        With zMotorControl
+            .MotorIndex = motorAddress.MsZ
+        End With
+        With controlUnits
+            .Add(controlUnitsEnum.X, xMotorControl)
+            .Add(controlUnitsEnum.Y, yMotorControl)
+            .Add(controlUnitsEnum.Z, zMotorControl)
+        End With
+
+        Return 0
+
+    End Function
+
+    Function initLoadSetting() As Integer
+        loadSetting(Me.genericSettings, "setting.xml")
+        Return 0
+    End Function
+
+    Function closeAssembly() As Integer
+        '---------------------------
+        '   Servo all motor off
+        '---------------------------
+        For index = 0 To [Enum].GetValues(GetType(motorAddress)).Length - 1
+            AMaxM4_ServoOn(index, IS_OFF)
+        Next
+        Return 0
+    End Function
+    Function initStartMotors() As Integer
+        'release alarm , servo-on , clear register...etc
+        '---------------------------
+        '   Servo all motor off
+        '---------------------------
+        Dim remainedErrorStatus As Integer
+        For index = 0 To [Enum].GetValues(GetType(motorAddress)).Length - 1
+            AMaxM4_ServoOn(index, pData.MotorSettings(index).ServoOnLevel)
+            AMaxM4_ResetALM(index, IS_ON)
+            AMaxM4_ErrorStatus(index, remainedErrorStatus)
+        Next
+
+        Threading.Thread.Sleep(1000)    'sleep for a while
+
+        For index = 0 To [Enum].GetValues(GetType(motorAddress)).Length - 1
+            AMaxM4_ResetALM(index, IS_OFF)
+        Next
+
+        Return 0
+    End Function
+
+    Shared ReadOnly Property Instance As Assembly
+        Get
+            If __instance Is Nothing Then
+                __instance = New Assembly
+            End If
+            Return __instance
+        End Get
+    End Property
+    Shared WithEvents __instance As Assembly = Nothing
+
+    Protected Sub New()
+        Me.initialize = CType([Delegate].Combine(Me.initialize,
+            New Func(Of Integer)(AddressOf initLinkPause),
+            New Func(Of Integer)(AddressOf initMappingAndSetup),
+            New Func(Of Integer)(AddressOf initSubsystemInitialize),
+            New Func(Of Integer)(AddressOf initStartMotors)),
+        Global.System.Func(Of Integer))
+
+        'Hsien , define shutdown script
+        Me.shutdown = [Delegate].Combine(New Func(Of Integer)(AddressOf closeDumpAlarms2Message),
+                                         New Func(Of Integer)(AddressOf closeFlushAllMessages),
+                                         New Func(Of Integer)(AddressOf closeAssembly),
+                                         New Func(Of Integer)(Function() As Integer
+                                                                  genericSettings.Save()
+                                                                  Return 0
+                                                              End Function))
+    End Sub
+
+#Region "state functions"
+
+    ''' <summary>
+    ''' Return all axes
+    ''' </summary>
+    ''' <returns></returns>
+    ''' <remarks></remarks>
+    Function stateIgnite() As Integer
+
+        Select Case systemSubState
+            Case 0
+                '---------------------------------
+                '   Wait until all hardware online
+                '---------------------------------
+                If (mainIOHardware.Instance.PhysicalHardwareList.TrueForAll(Function(__hardware As subHardwareNode) __hardware.Status = hardwareStatusEnum.HEALTHY)) Then
+                    sendMessage(statusEnum.GENERIC_MESSAGE, "All hardware connected")
+                    systemSubState = 10
+                Else
+                    '----------------------------------------
+                    '   Some hardware failed , wait reconnect
+                    '----------------------------------------
+                End If
+            Case 10
+                If controlFlags.setFlag(controlFlagsEnum.ABLE_IGNITE) Then
+                    'return z,smardpod first
+                    zMotorControl.drive(motorControl.motorCommandEnum.GO_HOME)
+                    'TODO , smarpod
+                    systemSubState = 20
+                Else
+                    '---------------------
+                    '   Wait Command
+                    '---------------------
+                End If
+            Case 20
+                If zMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END And
+                    __smarPodControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END Then
+
+                    yMotorControl.drive(motorControl.motorCommandEnum.GO_HOME)
+                    xMotorControl.drive(motorControl.motorCommandEnum.GO_HOME)
+
+                    systemSubState = 30
+                Else
+                    '--------------
+                    '
+                    '--------------
+                End If
+            Case 30
+                If xMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END And
+                    yMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END Then
+                    systemSubState = 100
+                Else
+                    '--------------
+                    '
+                    '--------------
+                End If
+                '----------------------------
+                '   Phase2 , to zero position
+                '----------------------------
+            Case 100
+                'xyz go to zero position
+                zMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, pData.MotorPoints(motorPoints.MsX_ZERO))
+                systemSubState = 110
+            Case 110
+                If zMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END Then
+
+                    xMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, pData.MotorPoints(motorPoints.MsY_ZERO))
+                    yMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, pData.MotorPoints(motorPoints.MsZ_ZERO))
+
+                    systemSubState = 120
+                Else
+                    '--------------
+                    '   
+                    '--------------
+                End If
+            Case 120
+                If xMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END And
+                    yMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTION_END Then
+                    For Each item As motorControlDrivable In {xMotorControl,
+                                                               yMotorControl,
+                                                               zMotorControl}
+                        AMaxM4_CmdPos_Reset(item.MotorIndex)
+                    Next
+                    systemMainState = systemStatesEnum.IDLE
+                Else
+                    '---------------
+                    '   
+                    '---------------
+                End If
+
+        End Select
+
+        Return 0
+    End Function
+    Function stateIdle() As Integer
+        Return 0
+    End Function
+    Function stateExecute() As Integer
+        Return 0
+    End Function
+#End Region
+
+    Dim WithEvents xManager As s0Htm = s0Htm.Instance
+    Dim WithEvents yzManager As c4htm = c4htm.Instance
+    Dim WithEvents sManager As sHtm = sHtm.Instance
+    Sub xPositionChanged() Handles xManager.TransformationChanged
+        'reject command if not stopped
+        'If xMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTING Then
+        '    Exit Sub
+        'End If
+        Dim command As cMotorPoint = pData.MotorPoints(motorPoints.MsX_ZERO).Clone
+        With command
+            .DistanceInUnit = xManager.AxFromZero
+        End With
+        xMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, command)
+    End Sub
+    Sub yzPositionChanged() Handles yzManager.TransformationChanged
+        'reject command if not stopped
+        'If yMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTING Or
+        '    zMotorControl.CommandEndStatus = IDrivable.endStatus.EXECUTING Then
+        '    Exit Sub
+        'End If
+
+        Dim commandY As cMotorPoint = pData.MotorPoints(motorPoints.MsY_ZERO).Clone
+        Dim commandZ As cMotorPoint = pData.MotorPoints(motorPoints.MsZ_ZERO).Clone
+        With commandY
+            .DistanceInUnit = yzManager.AyFromZero
+        End With
+        With commandZ
+            .DistanceInUnit = yzManager.AzFromZero
+        End With
+        yMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, commandY)
+        zMotorControl.drive(motorControl.motorCommandEnum.GO_POSITION, commandZ)
+    End Sub
+    Sub sPoseChanged() Handles sManager.TransformationChanged
+        'reject command if not stopped
+        'If __smarPodControl.CommandEndStatus = IDrivable.endStatus.EXECUTING Then
+        '    Exit Sub
+        'End If
+        __smarPodControl.drive(smarPodControl.podCommands.GO_POSITION, sHtm.Instance.PodCommand)
+    End Sub
+
+
+End Class
+

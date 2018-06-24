@@ -1,0 +1,4 @@
+Enum	motorAddress
+	MSA1A								=	0		'	¥d§X¤É­°
+	MSB1A								=	1		'	¨ú¤ù
+End Enum

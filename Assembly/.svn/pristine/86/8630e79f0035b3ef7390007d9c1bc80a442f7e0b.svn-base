@@ -1,0 +1,62 @@
+﻿Imports System.Text
+
+Public Class UserControl_LightControl
+
+    Private aryPorts As Array 'COM Ports
+
+    Public refLightControl As clsRS232LightControl = Nothing
+
+    Private Sub UserControl_LightControl_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        aryPorts = IO.Ports.SerialPort.GetPortNames()
+        For i = 0 To UBound(aryPorts)
+            cmbPort.Items.Add(aryPorts(i))
+        Next
+        cmbPort.SelectedItem = "COM2"
+        cmbBaud.SelectedItem = "9600"
+
+        cmb_channel.SelectedItem = "1"
+        TextBox_LightIntensity.Text = "0"
+    End Sub
+
+    Private Sub TrackBar1_Scroll(sender As Object, e As EventArgs) Handles TrackBar1.Scroll
+        TextBox_LightIntensity.Text = TrackBar1.Value
+    End Sub
+
+    Private Sub TextBox_LightMagnitude_TextChanged(sender As Object, e As EventArgs) Handles TextBox_LightIntensity.TextChanged
+        If Not IsNumeric(TextBox_LightIntensity.Text) Then
+            TextBox_LightIntensity.Text = ""
+            Exit Sub
+        End If
+        If Convert.ToInt16(TextBox_LightIntensity.Text) >= TrackBar1.Minimum And Convert.ToInt16(TextBox_LightIntensity.Text) <= TrackBar1.Maximum Then
+            TrackBar1.Value = Convert.ToInt16(TextBox_LightIntensity.Text)
+        End If
+    End Sub
+
+    Private Sub Btn_Set_Click(sender As Object, e As EventArgs) Handles Btn_Set.Click
+        refLightControl.Channel = cmb_channel.Text
+        refLightControl.LightIntensity = TextBox_LightIntensity.Text
+
+        refLightControl.flagExcute.setFlag(clsRS232LightControl.eunmCmd.LightSetting)
+    End Sub
+
+    Private Sub btnConnect_Click(sender As Object, e As EventArgs) Handles btnConnect.Click
+        refLightControl.SerPort(cmbPort.Text, Convert.ToInt16(cmbBaud.Text))
+        refLightControl.flagExcute.setFlag(clsRS232LightControl.eunmCmd.Connect)
+    End Sub
+
+    Private Sub btnDisconnect_Click(sender As Object, e As EventArgs) Handles btnDisconnect.Click
+        refLightControl.flagExcute.setFlag(clsRS232LightControl.eunmCmd.Close)
+    End Sub
+
+    Private Sub Timer1_Tick(sender As Object, e As EventArgs) Handles Timer1.Tick
+        If refLightControl IsNot Nothing Then
+            If refLightControl.Serial_232.IsOpen Then
+                btnConnect.Enabled = False
+                btnDisconnect.Enabled = True
+            Else
+                btnConnect.Enabled = True
+                btnDisconnect.Enabled = False
+            End If
+        End If
+    End Sub
+End Class

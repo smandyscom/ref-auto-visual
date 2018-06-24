@@ -1,0 +1,61 @@
+﻿Imports System.IO
+Imports System.Xml.Serialization
+
+Public Class ListAsQueue(Of T)
+    Inherits List(Of T)
+    Implements IPersistance
+
+    '-----------------------------
+    '   The Queue implemented by List
+    '1. List is able to serializing in xml form
+    '-----------------------------
+    'Friend __container As List(Of T) = New List(Of T)
+
+    '---------------------------------
+    '   Extended Methods
+    '---------------------------------
+    Public Sub Enqueue(item As T)
+        Me.Insert(0, item)  'first
+    End Sub
+    Public Function Dequeue() As T
+        Dim __dequeuedObject As T = Me.Last
+        Me.Remove(Me.Last)
+        Return __dequeuedObject
+    End Function
+    Public Function Peek() As T
+        Return Me.Last
+    End Function
+
+    Public Sub Create(filename As String) Implements IPersistance.Create
+        Me.Filename = filename
+        Save()
+    End Sub
+
+
+    <XmlIgnore> Public Property Filename As String Implements IPersistance.Filename
+    <XmlIgnore> Public Serializer As XmlSerializer  'should given the specific run-time type 
+
+    Public Sub Load(filename As String) Implements IPersistance.Load
+        Try
+            Using sr As StreamReader = New StreamReader(filename)
+                'Dim __object As ListAsQueue(Of T) = Serializer.Deserialize(sr)
+                'Me.__container = __object.__container   'direct replaced container
+
+                Me.Filename = filename
+            End Using
+
+        Catch ex As Exception
+
+        End Try
+
+
+    End Sub
+
+    Public Sub Save() Implements IPersistance.Save
+        Using sw As StreamWriter = New StreamWriter(Filename, False) 'override files
+            Serializer.Serialize(sw, Me)
+        End Using
+
+    End Sub
+
+End Class

@@ -1,0 +1,327 @@
+﻿Imports Automation
+Imports Automation.Components
+Imports Automation.Components.Services
+Imports Automation.Components.CommandStateMachine
+Imports Automation.mainIOHardware
+
+Public Class loadHandshake
+    Inherits systemControlPrototype
+    Property Conveyernum As Integer = 1
+
+    Dim ap As alarmContentSensor = New alarmContentSensor With {.Sender = Me}
+    Property timeout As Integer = 200
+    Property NGorOK As Boolean
+    Dim __logger As logHandler
+    Dim prostep As Integer = 0
+    Dim protmr As singleTimer = New singleTimer
+
+    Enum controlEnum
+        Beable_Ignite
+        Start_Trigger 'Trigger command falg,set True by LoadStation. when Trigger handshake process is done, reset it
+        AOI_ByPass
+        GetResult
+        isDIOScaning   'internal use for scaning DIO when handsahke process
+    End Enum
+    Enum SignalEnum
+        System_SendTrigger
+        System_Ready
+        System_ReadFinish
+        AOIReady
+        AOIBusy
+        AOIReadEnable
+        AOIResult
+    End Enum
+#Region "control members"
+
+    Property System_Ready As Integer
+    Property System_ReadFinish As Integer
+    Property System_SendTrigger As Integer
+
+    Property AOIReady As sensorControl = New sensorControl
+    Property AOIBusy As sensorControl = New sensorControl
+    Property AOIReadEnable As sensorControl = New sensorControl
+    Property AOIResult As sensorControl = New sensorControl
+    Dim tmr As singleTimer = New singleTimer
+
+    Public controlFlag As flagController(Of controlEnum) = New flagController(Of controlEnum)
+    Public signalFlag As flagController(Of SignalEnum) = New flagController(Of SignalEnum)
+#End Region
+    Function stateIGNITE() As Integer
+        Select Case systemSubState
+            Case 0
+                If controlFlag.readFlag(controlEnum.Beable_Ignite) = True Then
+                    signalFlag.setFlag(SignalEnum.System_Ready) 'send Ready signal to module
+                    writeBit(System_Ready, True)
+                    systemMainState = systemStatesEnum.EXECUTE
+                Else
+
+                End If
+
+
+
+
+        End Select
+
+        Return 0
+    End Function
+    Function stateEXECUTE() As Integer
+        If controlFlag.viewFlag(controlEnum.AOI_ByPass) Then
+            NGorOK = True
+            controlFlag.resetFlag(controlEnum.isDIOScaning)
+            controlFlag.setFlag(controlEnum.GetResult)
+            controlFlag.resetFlag(controlEnum.Start_Trigger)
+            systemSubState = 0
+            Return 0
+            Exit Function
+        End If
+
+        Select Case systemSubState
+            Case 0
+                controlFlag.resetFlag(controlEnum.isDIOScaning)
+                controlFlag.resetFlag(controlEnum.Start_Trigger)
+                systemSubState = 10
+
+            Case 10 'check if AOI bypass or not
+                If controlFlag.viewFlag(controlEnum.AOI_ByPass) = True Then
+                    NGorOK = True
+                    controlFlag.setFlag(controlEnum.GetResult)
+                    controlFlag.resetFlag(controlEnum.Start_Trigger)
+                    systemSubState = 0
+                    Return 0
+                    Exit Function
+                Else
+                    systemSubState = 20
+                End If
+
+
+            Case 20 'wait  Trigger Flag start to send Trigger signal
+                NGorOK = True
+                controlFlag.setFlag(controlEnum.GetResult)
+                If controlFlag.viewFlag(controlEnum.Start_Trigger) = True Then
+                    controlFlag.setFlag(controlEnum.isDIOScaning)
+                    signalFlag.setFlag(SignalEnum.System_SendTrigger)
+                    systemSubState = 25
+                    controlFlag.resetFlag(controlEnum.GetResult)
+                End If
+
+            Case 25 'make sure Trigger output
+                If readBit(System_SendTrigger) = True Then
+                    systemSubState = 30
+                End If
+
+            Case 30 'check AOI_Ready is ON firstly
+                If signalFlag.viewFlag(SignalEnum.AOIReady) Then
+                    systemSubState = 35
+                Else
+                    ap.Inputs = AOIReady.InputBit
+                    ap.Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                    ap.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() (True)
+                    ap.CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                                    systemSubState = 1000
+                                                                                    Return True
+                                                                                End Function
+                    ap.AdditionalInfo = "Conveyer" & Conveyernum.ToString & "  " & "AOIReady"
+                    CentralAlarmObject.raisingAlarm(ap)
+                End If
+
+            Case 35
+                tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, timeout) : tmr.IsEnabled = True
+                systemSubState = 40
+
+
+
+
+            Case 40  'check ModuleBusy ON ; set SendTrigger OFF
+                If signalFlag.viewFlag(SignalEnum.AOIBusy) Then
+                    tmr.TimerGoal = New TimeSpan(0, 0, 0, 0, timeout) : tmr.IsEnabled = True
+                    systemSubState = 50
+                ElseIf tmr.IsTimerTicked Then
+                    controlFlag.resetFlag(controlEnum.Start_Trigger)
+                    systemSubState = 50
+                    sendMessage(" AOIBusy" & " Should be ON")
+                End If
+
+            Case 50 'check ModuleBusy OFF 
+                If signalFlag.viewFlag(SignalEnum.AOIBusy) = False Then
+                    controlFlag.resetFlag(controlEnum.Start_Trigger)
+                    tmr.TimerGoal = New TimeSpan(0, 0, 1) : tmr.IsEnabled = True
+                    systemSubState = 60
+                ElseIf tmr.IsTimerTicked Then
+                    controlFlag.resetFlag(controlEnum.Start_Trigger)
+                    systemSubState = 60
+                    tmr.TimerGoal = New TimeSpan(0, 0, 1) : tmr.IsEnabled = True
+                    sendMessage(" AOIBusy" & " Should be OFF")
+                End If
+
+
+            Case 60 'check ModuleReadEnable ON and GetResult
+                If signalFlag.viewFlag(SignalEnum.AOIReadEnable) = True Then
+                    signalFlag.resetFlag(SignalEnum.System_SendTrigger)
+                    NGorOK = signalFlag.viewFlag(SignalEnum.AOIResult)
+                    systemSubState = 70
+                ElseIf tmr.IsTimerTicked Then
+                    ap.Inputs = AOIReadEnable.InputBit
+                    ap.Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_ON
+                    ap.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() (True)
+                    ap.CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                                    systemSubState = 1000
+                                                                                    Return True
+                                                                                End Function
+                    ap.AdditionalInfo = "Conveyer" & Conveyernum.ToString & "  " & "AOIReadEnable"
+                    CentralAlarmObject.raisingAlarm(ap)
+                End If
+
+            Case 70 'set ReadFinish ON
+                signalFlag.setFlag(SignalEnum.System_ReadFinish)
+                tmr.TimerGoal = New TimeSpan(0, 0, 1) : tmr.IsEnabled = True
+                systemSubState = 80
+
+            Case 80 'check Module_ReadEnable OFF ; set ReadFinish OFF
+                If signalFlag.viewFlag(SignalEnum.AOIReadEnable) = False Then
+                    signalFlag.resetFlag(SignalEnum.System_ReadFinish)
+                    systemSubState = 90
+                ElseIf tmr.IsTimerTicked Then
+                    ap.Inputs = AOIReadEnable.InputBit
+                    ap.Reason = alarmContentSensor.alarmReasonSensor.SHOULD_BE_OFF
+                    ap.CallbackResponse(alarmContextBase.responseWays.RETRY) = Function() (True)
+                    ap.CallbackResponse(alarmContextBase.responseWays.IGNORE) = Function() As Boolean
+                                                                                    systemSubState = 1000
+                                                                                    Return True
+                                                                                End Function
+                    ap.AdditionalInfo = "Conveyer" & Conveyernum.ToString & "  " & "AOIReadEnable"
+                    CentralAlarmObject.raisingAlarm(ap)
+                End If
+
+            Case 90 'set GetResult Flag ON. 通知手臂取完答案,可放片
+                controlFlag.setFlag(controlEnum.GetResult)
+                systemSubState = 100
+
+            Case 100 'wait GetResult flag OFF from outside
+                If controlFlag.viewFlag(controlEnum.GetResult) = False Then
+                    systemSubState = 0
+                End If
+
+            Case 1000 'Ignore process 
+                NGorOK = True
+                controlFlag.setFlag(controlEnum.GetResult)
+                signalFlag.resetFlag(SignalEnum.System_SendTrigger)
+                signalFlag.resetFlag(SignalEnum.System_ReadFinish)
+                systemSubState = 0
+
+
+
+        End Select
+        Return 0
+    End Function
+    Sub New()
+        '將自定義起始化函式加入 通用起始化引動清單
+        'jk note: 設定initialize中再加入initMappingAndSetup
+        '原本的initialze(在systemControlPrototype裡的New裡)已有設定包含三個function={initAddAllDrive,initLinkAlarm,initLinkMessenger}
+        '全部設定完後，必須在Assembly下call this instance.initialize
+        Me.initialize = [Delegate].Combine(Me.initialize, New Func(Of Integer)(AddressOf initMappingAndSetup))
+    End Sub
+    Function initMappingAndSetup() As Integer
+        With relatedFlags
+            .AddRange(controlFlag.FlagElementsArray)
+            .AddRange(signalFlag.FlagElementsArray)
+        End With
+
+        '本站主狀態函式設定
+        Me.systemMainStateFunctions(systemStatesEnum.IGNITE) = AddressOf stateIGNITE
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateEXECUTE
+        Me.systemMainState = systemStatesEnum.IGNITE
+
+        ap.PossibleResponse = alarmContextBase.responseWays.RETRY Or alarmContextBase.responseWays.IGNORE
+        'alarmContentSensor.InputsEnumType = GetType(inputAddress)
+
+
+        __logger = New logHandler("." + Me.DeviceName & Conveyernum.ToString) With {.IsAsynchronWriteLog = True}
+        __logger.ContentFilter = Function(__handler As messageHandler, __e As messagePackageEventArg) As Boolean
+                                     'return value : true , would pass and log / false : would be disposed
+                                     If (Not __e.Message.Sender.Equals(Me)) Then
+                                         Return False
+                                     End If
+
+                                     Return True    'passed
+                                 End Function
+        AddHandler CentralMessenger.MessagePoped, AddressOf __logger.logMessageToFile
+
+
+        Return 0
+    End Function
+    Protected Overrides Function process() As Integer
+
+        If controlFlag.viewFlag(controlEnum.isDIOScaning) = True Then
+            If readBit(AOIBusy.InputBit) Then
+                signalFlag.setFlag(SignalEnum.AOIBusy)
+            Else
+                signalFlag.resetFlag(SignalEnum.AOIBusy)
+            End If
+
+            If readBit(AOIReadEnable.InputBit) Then
+                signalFlag.setFlag(SignalEnum.AOIReadEnable)
+            Else
+                signalFlag.resetFlag(SignalEnum.AOIReadEnable)
+            End If
+
+            If readBit(AOIReady.InputBit) Then
+                signalFlag.setFlag(SignalEnum.AOIReady)
+            Else
+                signalFlag.resetFlag(SignalEnum.AOIReady)
+            End If
+
+            If readBit(AOIResult.InputBit) Then
+                signalFlag.setFlag(SignalEnum.AOIResult)
+            Else
+                signalFlag.resetFlag(SignalEnum.AOIResult)
+            End If
+
+            writeBit(System_SendTrigger, signalFlag.viewFlag(SignalEnum.System_SendTrigger))
+            writeBit(System_Ready, signalFlag.viewFlag(SignalEnum.System_Ready))
+            writeBit(System_ReadFinish, signalFlag.viewFlag(SignalEnum.System_ReadFinish))
+
+        End If
+
+
+
+
+
+
+        Static SignalCondition(6) As Boolean
+
+        For index = 0 To 6
+            If SignalCondition(index) <> signalFlag.viewFlag(index) Then
+
+                If signalFlag.viewFlag(index) Then
+                    sendMessage([Enum].GetName(GetType(SignalEnum), index) + " = ON")
+                Else
+                    sendMessage([Enum].GetName(GetType(SignalEnum), index) + " = OFF")
+                End If
+                SignalCondition(index) = signalFlag.viewFlag(index)
+
+            End If
+        Next
+
+
+        PauseBlock.pauseHandling()
+        CentralAlarmObject.alarmHandling()
+        Return MyBase.process()
+    End Function
+
+    Public Overrides Function close() As Integer
+        __logger.Dispose()
+        Return MyBase.close()
+    End Function
+
+#Region "alarm handler"
+    '------------------
+    'link alarm handler
+    '------------------
+    Sub alarmOccured(ByVal sender As Object, ByVal e As EventArgs) Handles CentralAlarmObject.alarmOccured, PauseBlock.InterceptedEvent 'link to PauseOccured
+        If ap.Sender.Equals(Me) Then
+            sendMessage(ap.ToString)
+        End If
+    End Sub
+
+#End Region
+End Class

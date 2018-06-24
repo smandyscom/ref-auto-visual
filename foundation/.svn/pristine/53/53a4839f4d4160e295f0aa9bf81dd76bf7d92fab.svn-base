@@ -1,0 +1,14 @@
+﻿Imports Automation
+Imports Automation.Components.CommandStateMachine
+
+''' <summary>
+''' 
+''' </summary>
+''' <remarks></remarks>
+Public Class clsConveyorLaneMaskV2
+    Inherits clsConveyorLaneMask
+    Public Overrides Function initMappingAndSetup() As Object
+        'remove auto add lane mask 
+        Return Nothing
+    End Function
+End Class

@@ -1,0 +1,126 @@
+﻿
+
+Public Class trayTaskDispatcher
+    Inherits systemControlPrototype
+
+    Property TrayDataReference As trayDataBase
+        Get
+            Return __trayDataReference
+        End Get
+        Set(value As trayDataBase)
+            __trayDataReference = value
+
+            '---------------------------------------
+            '   Initialize loading/unloading Request
+            '---------------------------------------
+            loadingRequest = New shiftDataCollection With {.DataType = GetType(shiftDataPackBase),
+                                                           .DataCount = __trayDataReference.LaneCount}
+            unloadingRequest = New shiftDataCollection With {.DataType = GetType(shiftDataPackBase),
+                                                           .DataCount = __trayDataReference.LaneCount}
+            loadingRequest.DataCollection.ForEach(Sub(__rowTask As shiftDataPackBase) __rowTask.IsPositionOccupied = True)      'initial state , all row had to load/unload
+            unloadingRequest.DataCollection.ForEach(Sub(__rowTask As shiftDataPackBase) __rowTask.IsPositionOccupied = True)
+
+            '---------------------------------------
+            '   Link the tray data
+            '---------------------------------------
+            loadingPickerReference.TargetPositionInfo = Function() (__trayDataReference)
+            unloadingPickerReference.TargetPositionInfo = Function() (__trayDataReference)
+
+        End Set
+    End Property
+
+    Public loadingPickerReference As ITaskDispatchable
+    Public unloadingPickerReference As ITaskDispatchable
+
+    Public loadingRequest As shiftDataCollection        'the loading request assigned by user
+    Public unloadingRequest As shiftDataCollection      'the unloading request assigned by user
+
+    Dim __trayDataReference As trayDataBase = Nothing  'used to check if any wafer remained on row
+
+    Dim loadingTask As shiftDataCollection      'use isOccupied as mark
+    Dim unloadingTask As shiftDataCollection
+
+    Function stateExecute() As Integer
+
+        Select Case systemSubState
+            Case 0
+                If (__trayDataReference.ModuleAction.viewFlag(interlockedFlag.POSITION_OCCUPIED)) Then
+
+                    '-------------------------------
+                    '   Calculate Tasks
+                    '-------------------------------
+                    'calculate loading task
+                    loadingTask = loadingRequest.Clone()    'direct clone
+                    'calculate unloading task , any wafer remained on target row , and user request to unloading
+                    unloadingTask = unloadingRequest.Clone()
+                    For index = 0 To unloadingTask.DataCount - 1
+                        unloadingTask.DataCollection(index).IsPositionOccupied =
+                            unloadingTask.DataCollection(index).IsPositionOccupied And CType(__trayDataReference.DataCollection(index), shiftDataCollection).IsAnyRemained
+                    Next
+
+                    '-----------------------------
+                    '   Loading Task Assignment
+                    '-----------------------------
+                    loadingPickerReference.TaskData = loadingTask 'reference re-assignation
+                    loadingPickerReference.InterlockData = unloadingTask
+                    '------------------------------
+                    '   Unloading Task Assignment
+                    '------------------------------
+                    unloadingPickerReference.TaskData = unloadingTask
+                    unloadingPickerReference.InterlockData = loadingTask    'pre-action used only
+
+                    cycleTimer.IsEnabled = True    'restart CT calculating
+
+                    systemSubState = 100
+                Else
+                    '-----------------------------
+                    '   Wait until tray comes
+                    '-----------------------------
+                End If
+            Case 100
+                '---------------------------------
+                '   Wait until all task finished
+                '---------------------------------
+                If (loadingTask.DataCollection.TrueForAll(Function(__rowTask As shiftDataPackBase) (Not __rowTask.IsPositionOccupied)) AndAlso
+                   unloadingTask.DataCollection.TrueForAll(Function(__rowTask As shiftDataPackBase) (Not __rowTask.IsPositionOccupied))) Then
+
+                    __cycleTime = cycleTimer.TimeElapsed
+
+                    __trayDataReference.ModuleAction.resetFlag(interlockedFlag.POSITION_OCCUPIED) 'release tray
+                    systemSubState = 0
+                Else
+                    '------------------------------------------------
+                    '   Wait loading/unloading picker to finished job
+                    '------------------------------------------------
+                End If
+
+        End Select
+
+
+        Return 0
+    End Function
+
+    Sub New()
+        Me.systemMainStateFunctions(systemStatesEnum.EXECUTE) = AddressOf stateExecute
+        Me.systemMainState = systemStatesEnum.EXECUTE
+
+        Me.initialize = [Delegate].Combine(New Func(Of Integer)(AddressOf initLinkAlarm),
+                                           New Func(Of Integer)(AddressOf initLinkMessenger),
+                                           New Func(Of Integer)(AddressOf initLinkPause))
+    End Sub
+
+End Class
+
+
+Public Interface ITaskDispatchable
+    Inherits IModuleSingle
+    '--------------------------------------------------
+    '   The Data interface for Loading/Unloading Picker
+    '--------------------------------------------------
+    'Property TrayDataReference As trayDataBase  ' used to link 
+    Property TaskData As shiftDataCollection    ' the task dispatched by upper Dispatcher
+    Property InterlockData As shiftDataCollection   'the interlock data
+    'for dispatcher : set on only
+    'for executor : set off only , when task finished
+
+End Interface

@@ -1,0 +1,197 @@
+﻿<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+Partial Class userControlMainPanel
+    Inherits System.Windows.Forms.UserControl
+
+    'UserControl overrides dispose to clean up the component list.
+    <System.Diagnostics.DebuggerNonUserCode()> _
+    Protected Overrides Sub Dispose(ByVal disposing As Boolean)
+        Try
+            If disposing AndAlso components IsNot Nothing Then
+                components.Dispose()
+            End If
+        Finally
+            MyBase.Dispose(disposing)
+        End Try
+    End Sub
+
+    'Required by the Windows Form Designer
+    Private components As System.ComponentModel.IContainer
+
+    'NOTE: The following procedure is required by the Windows Form Designer
+    'It can be modified using the Windows Form Designer.  
+    'Do not modify it using the code editor.
+    <System.Diagnostics.DebuggerStepThrough()> _
+    Private Sub InitializeComponent()
+        Me.components = New System.ComponentModel.Container()
+        Dim resources As System.ComponentModel.ComponentResourceManager = New System.ComponentModel.ComponentResourceManager(GetType(userControlMainPanel))
+        Me.TimerFlash = New System.Windows.Forms.Timer(Me.components)
+        Me.TimerRefresh = New System.Windows.Forms.Timer(Me.components)
+        Me.ButtonShutdown = New System.Windows.Forms.Button()
+        Me.ButtonPause = New System.Windows.Forms.Button()
+        Me.ButtonStart = New System.Windows.Forms.Button()
+        Me.fraMainMsg = New System.Windows.Forms.GroupBox()
+        Me.UserControlMessageMainPanel = New Automation.userControlMessage()
+        Me.GroupBoxOperation = New System.Windows.Forms.GroupBox()
+        Me.TableLayoutPanel2 = New System.Windows.Forms.TableLayoutPanel()
+        Me.ButtonFinish = New System.Windows.Forms.Button()
+        Me.GroupBoxInfor = New System.Windows.Forms.GroupBox()
+        Me.TableLayoutPanelInfo = New System.Windows.Forms.TableLayoutPanel()
+        Me.Label1 = New System.Windows.Forms.Label()
+        Me.TextBoxRFID = New System.Windows.Forms.TextBox()
+        Me.TableLayoutPanel1 = New System.Windows.Forms.TableLayoutPanel()
+        Me.TableLayoutPanel3 = New System.Windows.Forms.TableLayoutPanel()
+        Me.fraMainMsg.SuspendLayout()
+        Me.GroupBoxOperation.SuspendLayout()
+        Me.TableLayoutPanel2.SuspendLayout()
+        Me.GroupBoxInfor.SuspendLayout()
+        Me.TableLayoutPanelInfo.SuspendLayout()
+        Me.TableLayoutPanel1.SuspendLayout()
+        Me.TableLayoutPanel3.SuspendLayout()
+        Me.SuspendLayout()
+        '
+        'TimerFlash
+        '
+        Me.TimerFlash.Interval = 1000
+        '
+        'ButtonShutdown
+        '
+        Me.ButtonShutdown.BackColor = System.Drawing.SystemColors.Control
+        Me.ButtonShutdown.Cursor = System.Windows.Forms.Cursors.Default
+        resources.ApplyResources(Me.ButtonShutdown, "ButtonShutdown")
+        Me.ButtonShutdown.ForeColor = System.Drawing.SystemColors.ControlText
+        Me.ButtonShutdown.Name = "ButtonShutdown"
+        Me.ButtonShutdown.UseVisualStyleBackColor = False
+        '
+        'ButtonPause
+        '
+        Me.ButtonPause.BackColor = System.Drawing.SystemColors.Control
+        Me.ButtonPause.Cursor = System.Windows.Forms.Cursors.Default
+        resources.ApplyResources(Me.ButtonPause, "ButtonPause")
+        Me.ButtonPause.ForeColor = System.Drawing.SystemColors.ControlText
+        Me.ButtonPause.Name = "ButtonPause"
+        Me.ButtonPause.UseVisualStyleBackColor = False
+        '
+        'ButtonStart
+        '
+        Me.ButtonStart.BackColor = System.Drawing.SystemColors.Control
+        Me.ButtonStart.Cursor = System.Windows.Forms.Cursors.Default
+        resources.ApplyResources(Me.ButtonStart, "ButtonStart")
+        Me.ButtonStart.ForeColor = System.Drawing.SystemColors.ControlText
+        Me.ButtonStart.Name = "ButtonStart"
+        Me.ButtonStart.UseVisualStyleBackColor = False
+        '
+        'fraMainMsg
+        '
+        Me.fraMainMsg.BackColor = System.Drawing.SystemColors.Control
+        Me.fraMainMsg.Controls.Add(Me.UserControlMessageMainPanel)
+        resources.ApplyResources(Me.fraMainMsg, "fraMainMsg")
+        Me.fraMainMsg.ForeColor = System.Drawing.Color.Black
+        Me.fraMainMsg.Name = "fraMainMsg"
+        Me.fraMainMsg.TabStop = False
+        '
+        'UserControlMessageMainPanel
+        '
+        resources.ApplyResources(Me.UserControlMessageMainPanel, "UserControlMessageMainPanel")
+        Me.UserControlMessageMainPanel.MaxLines = 64
+        Me.UserControlMessageMainPanel.messengerReference = Nothing
+        Me.UserControlMessageMainPanel.Name = "UserControlMessageMainPanel"
+        '
+        'GroupBoxOperation
+        '
+        Me.GroupBoxOperation.Controls.Add(Me.TableLayoutPanel2)
+        resources.ApplyResources(Me.GroupBoxOperation, "GroupBoxOperation")
+        Me.GroupBoxOperation.Name = "GroupBoxOperation"
+        Me.GroupBoxOperation.TabStop = False
+        '
+        'TableLayoutPanel2
+        '
+        resources.ApplyResources(Me.TableLayoutPanel2, "TableLayoutPanel2")
+        Me.TableLayoutPanel2.Controls.Add(Me.ButtonFinish, 0, 3)
+        Me.TableLayoutPanel2.Controls.Add(Me.ButtonPause, 0, 0)
+        Me.TableLayoutPanel2.Controls.Add(Me.ButtonStart, 0, 1)
+        Me.TableLayoutPanel2.Controls.Add(Me.ButtonShutdown, 0, 4)
+        Me.TableLayoutPanel2.Name = "TableLayoutPanel2"
+        '
+        'ButtonFinish
+        '
+        Me.ButtonFinish.BackColor = System.Drawing.SystemColors.Control
+        Me.ButtonFinish.Cursor = System.Windows.Forms.Cursors.Default
+        resources.ApplyResources(Me.ButtonFinish, "ButtonFinish")
+        Me.ButtonFinish.ForeColor = System.Drawing.SystemColors.ControlText
+        Me.ButtonFinish.Name = "ButtonFinish"
+        Me.ButtonFinish.UseVisualStyleBackColor = False
+        '
+        'GroupBoxInfor
+        '
+        Me.GroupBoxInfor.Controls.Add(Me.TableLayoutPanelInfo)
+        resources.ApplyResources(Me.GroupBoxInfor, "GroupBoxInfor")
+        Me.GroupBoxInfor.Name = "GroupBoxInfor"
+        Me.GroupBoxInfor.TabStop = False
+        '
+        'TableLayoutPanelInfo
+        '
+        resources.ApplyResources(Me.TableLayoutPanelInfo, "TableLayoutPanelInfo")
+        Me.TableLayoutPanelInfo.Controls.Add(Me.Label1, 0, 0)
+        Me.TableLayoutPanelInfo.Controls.Add(Me.TextBoxRFID, 1, 0)
+        Me.TableLayoutPanelInfo.Name = "TableLayoutPanelInfo"
+        '
+        'Label1
+        '
+        resources.ApplyResources(Me.Label1, "Label1")
+        Me.Label1.Name = "Label1"
+        '
+        'TextBoxRFID
+        '
+        resources.ApplyResources(Me.TextBoxRFID, "TextBoxRFID")
+        Me.TextBoxRFID.Name = "TextBoxRFID"
+        Me.TextBoxRFID.ReadOnly = True
+        '
+        'TableLayoutPanel1
+        '
+        resources.ApplyResources(Me.TableLayoutPanel1, "TableLayoutPanel1")
+        Me.TableLayoutPanel1.Controls.Add(Me.fraMainMsg, 0, 0)
+        Me.TableLayoutPanel1.Controls.Add(Me.TableLayoutPanel3, 1, 0)
+        Me.TableLayoutPanel1.Name = "TableLayoutPanel1"
+        '
+        'TableLayoutPanel3
+        '
+        resources.ApplyResources(Me.TableLayoutPanel3, "TableLayoutPanel3")
+        Me.TableLayoutPanel3.Controls.Add(Me.GroupBoxOperation, 0, 0)
+        Me.TableLayoutPanel3.Controls.Add(Me.GroupBoxInfor, 0, 1)
+        Me.TableLayoutPanel3.Name = "TableLayoutPanel3"
+        '
+        'userControlMainPanel
+        '
+        resources.ApplyResources(Me, "$this")
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.Controls.Add(Me.TableLayoutPanel1)
+        Me.Name = "userControlMainPanel"
+        Me.fraMainMsg.ResumeLayout(False)
+        Me.GroupBoxOperation.ResumeLayout(False)
+        Me.TableLayoutPanel2.ResumeLayout(False)
+        Me.GroupBoxInfor.ResumeLayout(False)
+        Me.TableLayoutPanelInfo.ResumeLayout(False)
+        Me.TableLayoutPanelInfo.PerformLayout()
+        Me.TableLayoutPanel1.ResumeLayout(False)
+        Me.TableLayoutPanel3.ResumeLayout(False)
+        Me.ResumeLayout(False)
+
+    End Sub
+    Friend WithEvents TimerFlash As System.Windows.Forms.Timer
+    Friend WithEvents TimerRefresh As System.Windows.Forms.Timer
+    Public WithEvents ButtonShutdown As System.Windows.Forms.Button
+    Public WithEvents ButtonPause As System.Windows.Forms.Button
+    Public WithEvents ButtonStart As System.Windows.Forms.Button
+    Public WithEvents fraMainMsg As System.Windows.Forms.GroupBox
+    Friend WithEvents GroupBoxOperation As System.Windows.Forms.GroupBox
+    Friend WithEvents GroupBoxInfor As System.Windows.Forms.GroupBox
+    Friend WithEvents TableLayoutPanelInfo As System.Windows.Forms.TableLayoutPanel
+    Friend WithEvents Label1 As System.Windows.Forms.Label
+    Friend WithEvents TextBoxRFID As System.Windows.Forms.TextBox
+    Friend WithEvents UserControlMessageMainPanel As Automation.userControlMessage
+    Friend WithEvents TableLayoutPanel1 As System.Windows.Forms.TableLayoutPanel
+    Friend WithEvents TableLayoutPanel2 As System.Windows.Forms.TableLayoutPanel
+    Friend WithEvents TableLayoutPanel3 As System.Windows.Forms.TableLayoutPanel
+    Public WithEvents ButtonFinish As System.Windows.Forms.Button
+
+End Class
