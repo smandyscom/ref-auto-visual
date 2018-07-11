@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<htmEdgeElementary xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <MatrixText>-1,0,0,440
-0,-1,0,202.267
-0,0,1,58
-0,0,0,1</MatrixText>
-</htmEdgeElementary>

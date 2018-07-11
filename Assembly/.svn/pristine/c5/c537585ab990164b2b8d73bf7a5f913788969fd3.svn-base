@@ -1,5 +1,0 @@
-//SV,,,,,
-//SV_NUMBERS,3,,,,
-//Name,ID,Type,Length,Unit,Definition
-EquipmentState,1003,ASCII,100,,Current State of Equipment 
-PreviousEquipmentState,1004,ASCII,100,,Previous State of Equipment

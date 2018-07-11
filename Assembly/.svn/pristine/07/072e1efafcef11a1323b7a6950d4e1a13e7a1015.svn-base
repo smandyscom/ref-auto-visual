@@ -1,9 +1,0 @@
-Echo "Start Generating" 
-generator\Generator.exe mapDataLoader.xlsx ../definations/inputs.vb input.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/outputs.vb output.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/motorAddress.vb motorAddress.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/motorPoints.vb motorPoints.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/message.vb message.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/message_en.vb message_en.xml 
-generator\Generator.exe mapDataLoader.xlsx ../definations/area.vb area.xml 
-PAUSE

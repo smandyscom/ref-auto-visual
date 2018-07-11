@@ -1,8 +1,0 @@
-﻿
-
-Public Class uvCure
-
-    Dim __serialPort As IO.Ports.SerialPort = New IO.Ports.SerialPort
-
-
-End Class

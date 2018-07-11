@@ -1,3 +1,0 @@
-//EC,,,,,,,
-// Name,ID,Type,Min.Value,Max.Value,Default.Value,Unit,Definition
-TimeoutOfRCMD,6002,ASCII,0,0,0,,Time limit of Waiting RCMD Release

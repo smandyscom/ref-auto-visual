@@ -1,6 +1,0 @@
-﻿Public Enum interlockedFlag
-    '--------------------------------------------
-    '   The connecting media through all stations
-    '--------------------------------------------
-    POSITION_OCCUPIED
-End Enum

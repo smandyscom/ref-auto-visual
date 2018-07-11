@@ -1,4 +1,0 @@
-$(ProjectDir)tools\generator\generator.exe  $(ProjectDir)maps\mapData_05-067.xlsx $(ProjectDir)definations\inputs.vb                     $(ProjectDir)tools\generator\MappingSetInput.xml  inputAddress
-$(ProjectDir)tools\generator\generator.exe  $(ProjectDir)maps\mapData_05-067.xlsx $(ProjectDir)definations\outputs.vb                  $(ProjectDir)tools\generator\MappingSetOutput.xml  outputAddress
-$(ProjectDir)tools\generator\generator.exe  $(ProjectDir)maps\mapData_05-067.xlsx $(ProjectDir)definations\motorPoints.vb         $(ProjectDir)tools\generator\MappingSetMotor.xml  motorPoints
-$(ProjectDir)tools\generator\generator.exe  $(ProjectDir)maps\mapData_05-067.xlsx $(ProjectDir)definations\motorAddress.vb      $(ProjectDir)tools\generator\MappingSetMotorAddress.xml  motorAddress
